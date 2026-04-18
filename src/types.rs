@@ -29,9 +29,11 @@ pub struct RouteConfigSource {
     #[serde(default)]
     pub model: Option<String>,
     /// When `true`, forward the request in Anthropic Messages native format
-    /// (no OpenAI translation, `x-api-key` + `anthropic-version` auth,
-    /// upstream path `{base}/messages`). Defaults to `false`, in which case
-    /// Prism translates to OpenAI `chat/completions` as usual.
+    /// (no OpenAI translation, Anthropic-style auth headers, upstream path
+    /// auto-resolved as `{base}/messages` or `{base}/v1/messages`
+    /// depending on whether `base` already ends with `/v1/`). Defaults to
+    /// `false`, in which case Prism translates to OpenAI
+    /// `chat/completions` as usual.
     #[serde(default, alias = "anthropic-format", alias = "anthropicFormat")]
     pub anthropic_format: Option<bool>,
 }
@@ -166,7 +168,13 @@ pub struct OpenAiResponseMessage {
     pub role: Option<String>,
     #[serde(default)]
     pub content: Option<Value>,
-    #[serde(default, rename = "reasoning_content")]
+    #[serde(
+        default,
+        rename = "reasoning_content",
+        alias = "reasoning",
+        alias = "reasoning_details",
+        alias = "thinking"
+    )]
     pub _reasoning_content: Option<Value>,
     #[serde(default)]
     pub tool_calls: Option<Vec<OpenAiToolCall>>,
@@ -219,6 +227,17 @@ pub struct OpenAiStreamChoice {
 pub struct OpenAiDelta {
     #[serde(default)]
     pub content: Option<Value>,
+    /// OpenAI-compatible providers stream reasoning under a few different
+    /// field names (`reasoning_content`, `reasoning`, `reasoning_details`,
+    /// `thinking`). Capture the common aliases so the Responses translator can
+    /// surface them as reasoning summary events.
+    #[serde(
+        default,
+        alias = "reasoning",
+        alias = "reasoning_details",
+        alias = "thinking"
+    )]
+    pub reasoning_content: Option<Value>,
     #[serde(default)]
     pub tool_calls: Option<Vec<OpenAiToolCallDelta>>,
 }

@@ -129,8 +129,9 @@ entirely**. When set:
 
 - The inbound Anthropic Messages body is forwarded verbatim (only the
   `model` field is rewritten per the routing rules above).
-- Auth uses `x-api-key: <key>` plus `anthropic-version: 2023-06-01`.
-- The upstream endpoint is `{base}/messages`.
+- Auth sends `x-api-key: <key>`, `Authorization: Bearer <key>`, and `anthropic-version: 2023-06-01`.
+- The upstream endpoint is auto-resolved from `base`: `{base}/messages`
+  when `base` already ends in `/v1/`, otherwise `{base}/v1/messages`.
 - The response and SSE stream are relayed byte-for-byte — Prism does not
   parse or translate anything.
 - Provider-specific body tweaks (`fireworks` / `zai` quirks) are skipped
@@ -244,8 +245,8 @@ window.PRISM_PRESETS = [
 ```
 
 - Applying a preset fills the route's **`base`, `provider`, and `key_env` (only if the route's env is empty)**. It never touches `prefix`, `default model`, or the api key value.
-- 23 presets ship by default, grouped roughly as:
-  - **Anthropic-native** (passthrough): Anthropic.
+- 31 presets ship by default, grouped roughly as:
+  - **Anthropic-native** (passthrough): Anthropic, Fireworks (Anthropic native), OpenRouter (Anthropic native), LMRouter (Anthropic native), OfoxAI (Anthropic native), Anannas (Anthropic native), LLMGateway (Anthropic native), NagaAI (Anthropic native), Shannon AI (Anthropic native).
   - **Primary coding / Claude Code targets**: Z.AI (coding), Fireworks, OpenRouter.
   - **OpenAI family**: OpenAI, Google Gemini (OAI-compat), xAI (Grok), Mistral.
   - **Fast inference clouds**: Groq, Cerebras, SambaNova, Together AI, Hyperbolic, Nebius.
@@ -267,7 +268,7 @@ Provider URLs and model line-ups change over time. Double-check each provider's 
 | GET    | `/healthz`              | `{"status":"ok"}`                                                   |
 | GET    | `/presets.js`           | Builder presets (compile-time embedded)                             |
 | POST   | `/v1/messages`          | Anthropic Messages — routing + translation + SSE relay              |
-| POST   | `/v1/responses`         | OpenAI Responses → chat/completions translation (non-streaming only) |
+| POST   | `/v1/responses`         | OpenAI Responses → chat/completions translation                       |
 | POST   | `/api/test-upstream`    | Builder one-shot upstream `chat/completions` ping                   |
 | POST   | `/api/test-stream`      | Builder SSE streaming playground                                    |
 | POST   | `/api/resolve-preview`  | Resolver Simulator dry-run                                          |
@@ -276,9 +277,9 @@ Provider URLs and model line-ups change over time. Double-check each provider's 
 
 ## Translation notes & limits
 
-- Anthropic `thinking` / `image` / `document` blocks are downgraded or lowered to textual notes where no equivalent exists in OpenAI-compatible payloads.
+- Anthropic `thinking` blocks are dropped on the user path (carried as `reasoning_content` on the assistant path). `image` blocks translate natively. `document` blocks with `source.type = "text"` or `"content"` are expanded inline (text + nested images preserved); `base64` / `url` / `file` document sources, plus `audio` / `video` / `file` blocks, are still lowered to textual notes where no OpenAI-compatible equivalent exists.
 - `tool_use` / `tool_result` translate in both directions. Some providers ship slightly different tool-streaming formats; the adapter layer smooths those out.
-- `/v1/responses` streaming is not implemented yet (`501 unsupported_feature`). Non-streaming works.
+- `/v1/responses` supports both non-streaming and streaming. The streaming path emits full Responses-shaped SSE events (`response.created` / `response.output_item.added` / `response.output_text.delta` / `response.function_call_arguments.delta` / `response.reasoning_summary_text.delta` / `response.completed`). Upstream `reasoning_content` deltas are surfaced as `reasoning` items preceding the message item.
 - Prism does **not** check inbound authentication. Run it locally only.
 
 ---

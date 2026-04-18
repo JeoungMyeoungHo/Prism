@@ -10,8 +10,9 @@
 //   - key_env          (optional; only filled if the route's env field is empty)
 //   - anthropic_format (optional bool; when true the route bypasses the
 //                       OpenAI translation and relays Anthropic Messages
-//                       natively, using x-api-key + anthropic-version auth
-//                       and the {base}/messages path)
+//                       natively, using Anthropic-style auth headers and the
+//                       derived Messages path: {base}/messages when the base
+//                       already ends in /v1/, otherwise {base}/v1/messages)
 //
 // Presets NEVER touch prefix, default model, or the api key value itself.
 //
@@ -30,6 +31,62 @@ window.PRISM_PRESETS = [
     base: "https://api.anthropic.com/v1/",
     provider: "auto",
     key_env: "ANTHROPIC_API_KEY",
+    anthropic_format: true,
+  },
+  {
+    name: "Fireworks (Anthropic native)",
+    base: "https://api.fireworks.ai/inference/",
+    provider: "auto",
+    key_env: "FIREWORKS_API_KEY",
+    anthropic_format: true,
+  },
+  {
+    name: "OpenRouter (Anthropic native)",
+    base: "https://openrouter.ai/api/v1/",
+    provider: "auto",
+    key_env: "OPENROUTER_API_KEY",
+    anthropic_format: true,
+  },
+  {
+    name: "LMRouter (Anthropic native)",
+    base: "https://api.lmrouter.com/anthropic/v1/",
+    provider: "auto",
+    key_env: "LMROUTER_API_KEY",
+    anthropic_format: true,
+  },
+  {
+    name: "OfoxAI (Anthropic native)",
+    base: "https://api.ofox.ai/anthropic/v1/",
+    provider: "auto",
+    key_env: "OFOXAI_API_KEY",
+    anthropic_format: true,
+  },
+  {
+    name: "Anannas (Anthropic native)",
+    base: "https://api.anannas.ai/v1/",
+    provider: "auto",
+    key_env: "ANANNAS_API_KEY",
+    anthropic_format: true,
+  },
+  {
+    name: "LLMGateway (Anthropic native)",
+    base: "https://api.llmgateway.io/v1/",
+    provider: "auto",
+    key_env: "LLM_GATEWAY_API_KEY",
+    anthropic_format: true,
+  },
+  {
+    name: "NagaAI (Anthropic native)",
+    base: "https://api.naga.ac/v1/",
+    provider: "auto",
+    key_env: "NAGA_API_KEY",
+    anthropic_format: true,
+  },
+  {
+    name: "Shannon AI (Anthropic native)",
+    base: "https://api.shannon-ai.com/v1/",
+    provider: "auto",
+    key_env: "SHANNON_API_KEY",
     anthropic_format: true,
   },
 

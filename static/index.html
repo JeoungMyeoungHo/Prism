@@ -1587,7 +1587,7 @@
           route_preset_hint: "Fills base URL, provider, and the Anthropic-format flag when the preset specifies it. Never touches prefix, default model, or api key.",
           route_preset_placeholder: "Apply preset…",
           route_anthropic_format: "Anthropic format (passthrough)",
-          route_anthropic_format_hint: "Skip OpenAI translation; use x-api-key + anthropic-version headers; upstream path {base}/messages.",
+          route_anthropic_format_hint: "Skip OpenAI translation; use Anthropic-style auth headers; upstream path auto-resolves to {base}/messages or {base}/v1/messages.",
 
           simulator_title: "Resolver",
           simulator_subtitle: "Type any model string. Prism tells you which rule matched, which route receives it, and what model name ends up at the upstream.",
@@ -1732,7 +1732,7 @@
           route_preset_hint: "base URL과 provider, 그리고 프리셋이 지정한 경우 Anthropic 포맷 플래그까지 채웁니다. prefix, default model, api key는 건드리지 않습니다.",
           route_preset_placeholder: "프리셋 적용…",
           route_anthropic_format: "Anthropic 포맷 (passthrough)",
-          route_anthropic_format_hint: "OpenAI 변환을 건너뛰고 x-api-key + anthropic-version 헤더로 {base}/messages에 직접 전송합니다.",
+          route_anthropic_format_hint: "OpenAI 변환을 건너뛰고 Anthropic 스타일 인증 헤더로 직접 전송합니다. upstream 경로는 base가 /v1/로 끝나면 {base}/messages, 아니면 {base}/v1/messages로 자동 결정됩니다.",
 
           simulator_title: "Resolver",
           simulator_subtitle: "모델명을 입력하면 어떤 규칙으로 어느 route에 가고, upstream에 어떤 이름이 전송되는지 보여줍니다.",

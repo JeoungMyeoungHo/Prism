@@ -41,8 +41,7 @@ pub struct ModelRouter {
 impl ModelRouter {
     pub fn new(backends: Vec<Backend>) -> Self {
         let mut prefix_order: Vec<usize> = (0..backends.len()).collect();
-        prefix_order
-            .sort_by(|&a, &b| backends[b].prefix.len().cmp(&backends[a].prefix.len()));
+        prefix_order.sort_by(|&a, &b| backends[b].prefix.len().cmp(&backends[a].prefix.len()));
         Self {
             backends,
             prefix_order,

@@ -2,9 +2,7 @@ use crate::{
     provider::ProviderKind,
     proxy::{forward_request_to_backend, ApiError},
     router::ModelRouter,
-    types::{
-        AnthropicContent, AnthropicMessage, AnthropicMessagesRequest, AnthropicTool, Backend,
-    },
+    types::{AnthropicContent, AnthropicMessage, AnthropicMessagesRequest, AnthropicTool, Backend},
 };
 use axum::{
     extract::Json,
@@ -26,7 +24,10 @@ pub async fn builder() -> Html<&'static str> {
 /// Content is embedded at compile time; edit `static/presets.js` and rebuild.
 pub async fn presets_js() -> impl IntoResponse {
     (
-        [(header::CONTENT_TYPE, "application/javascript; charset=utf-8")],
+        [(
+            header::CONTENT_TYPE,
+            "application/javascript; charset=utf-8",
+        )],
         include_str!("../static/presets.js"),
     )
 }
@@ -431,4 +432,3 @@ fn build_stream_request(
         tool_choice: None,
     })
 }
-
