@@ -1,0 +1,45 @@
+# ─── Rust ──────────────────────────────────────────────────────────────
+# Build artifacts (never commit)
+/target/
+
+# Cargo.lock IS committed for binary crates — leave it tracked.
+
+# Workspace-local files
+**/*.rs.bk
+
+# ─── Prism local configs ───────────────────────────────────────────────
+# These files typically contain plaintext API keys — never commit.
+prism.config.toml
+prism.config.*.toml
+*.local.toml
+
+# ─── Secrets / env ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Backups (from manual/UI revisions) ────────────────────────────────
+*.bak
+*.bak.*
+*.orig
+
+# ─── Claude Code / harness ─────────────────────────────────────────────
+# Claude Code tooling state (preview launch config, local settings, …).
+# Not part of the project; ignore the whole directory.
+.claude/
+
+# ─── Editors ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.iml
+
+# ─── OS ────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Runtime / logs ────────────────────────────────────────────────────
+*.log

@@ -1,0 +1,22 @@
+[package]
+name = "prism"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Multi-provider gateway for Anthropic-compatible clients (e.g. Claude Code) with prefix / namespace / exact-default routing."
+readme = "README.md"
+
+[dependencies]
+async-stream = "0.3"
+axum = { version = "0.7", features = ["json", "macros"] }
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread"] }
+tokio-util = { version = "0.7", features = ["io"] }
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+url = "2"

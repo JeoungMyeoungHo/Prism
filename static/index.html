@@ -1,0 +1,2638 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prism Builder</title>
+    <style data-version="flat-v3">
+      :root {
+        /* Flat v3 — Linear/Vercel-inspired density. */
+        --bg: #07080c;
+        --surface: #0d0f15;
+        --surface-hover: #12141c;
+        --border: rgba(255, 255, 255, 0.06);
+        --border-strong: rgba(255, 255, 255, 0.12);
+        --ink: #ecedf2;
+        --ink-2: #a0a7b8;
+        --ink-3: #666d81;
+        --accent: #8ba4ff;
+        --accent-soft: rgba(139, 164, 255, 0.12);
+        --good: #5fd0a1;
+        --warn: #e6c06a;
+        --bad: #ec7a7a;
+        --mono: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
+        --sans: "Inter", "Pretendard", "Apple SD Gothic Neo", system-ui, sans-serif;
+        --radius: 6px;
+        --radius-lg: 10px;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+
+      body {
+        min-height: 100vh;
+        color: var(--ink);
+        background: var(--bg);
+        font-family: var(--sans);
+        font-size: 13px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      code, kbd, pre, .mono { font-family: var(--mono); font-size: 0.92em; }
+
+      button, input, select, textarea { font-family: inherit; }
+
+      /* ── Topbar ─────────────────────────────────────────────── */
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        height: 44px;
+        padding: 0 18px;
+        background: rgba(7, 8, 12, 0.85);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--border);
+        gap: 14px;
+      }
+
+      .brand {
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: -0.005em;
+        color: var(--ink);
+      }
+      .brand em {
+        font-style: normal;
+        color: var(--ink-3);
+        font-weight: 500;
+        margin-left: 4px;
+      }
+
+      .topbar .status-inline {
+        color: var(--ink-3);
+        font-family: var(--mono);
+        font-size: 12px;
+        display: flex;
+        gap: 14px;
+      }
+      .topbar .status-inline span strong {
+        color: var(--ink-2);
+        font-weight: 500;
+      }
+
+      .topbar .spacer { flex: 1; }
+
+      .topbar .actions {
+        display: flex;
+        gap: 4px;
+      }
+
+      .btn {
+        font: inherit;
+        font-size: 12.5px;
+        height: 28px;
+        padding: 0 10px;
+        border-radius: var(--radius);
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--ink-2);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: background 0.12s, color 0.12s, border-color 0.12s;
+      }
+      .btn:hover {
+        background: var(--surface-hover);
+        color: var(--ink);
+      }
+      .btn.primary {
+        background: var(--accent);
+        color: #0a0a10;
+        font-weight: 600;
+      }
+      .btn.primary:hover {
+        background: #a6baff;
+      }
+      .btn.outline {
+        border-color: var(--border-strong);
+      }
+      .btn.danger {
+        color: var(--bad);
+      }
+      .btn.danger:hover {
+        background: rgba(236, 122, 122, 0.08);
+      }
+
+      /* Keep old button selectors compatible with existing markup. */
+      button {
+        font-size: 12.5px;
+        height: 28px;
+        padding: 0 10px;
+        border-radius: var(--radius);
+        border: 1px solid var(--border-strong);
+        background: var(--surface);
+        color: var(--ink);
+        cursor: pointer;
+        transition: background 0.12s, border-color 0.12s;
+      }
+      button:hover {
+        background: var(--surface-hover);
+        border-color: rgba(255, 255, 255, 0.2);
+      }
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #0a0a10;
+        font-weight: 600;
+      }
+      button.primary:hover { background: #a6baff; }
+      button.ghost {
+        background: transparent;
+        border-color: transparent;
+      }
+      button.danger {
+        color: var(--bad);
+        border-color: transparent;
+      }
+      button.danger:hover {
+        background: rgba(236, 122, 122, 0.08);
+      }
+
+      .lang-btn {
+        font-family: var(--mono);
+        font-size: 11px;
+        border: 1px solid var(--border);
+      }
+
+      /* ── Layout ─────────────────────────────────────────────── */
+      .layout {
+        display: grid;
+        grid-template-columns: 180px minmax(0, 1fr);
+        min-height: calc(100vh - 44px);
+      }
+
+      .rail {
+        padding: 20px 12px;
+        border-right: 1px solid var(--border);
+        position: sticky;
+        top: 44px;
+        align-self: start;
+        height: calc(100vh - 44px);
+        overflow-y: auto;
+      }
+      .rail-head {
+        font-size: 10.5px;
+        color: var(--ink-3);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        padding: 6px 10px 8px;
+      }
+      .rail nav { display: flex; flex-direction: column; gap: 1px; }
+      .rail a {
+        display: block;
+        padding: 6px 10px;
+        border-radius: var(--radius);
+        color: var(--ink-2);
+        text-decoration: none;
+        font-size: 12.5px;
+      }
+      .rail a:hover {
+        color: var(--ink);
+        background: var(--surface);
+      }
+      .rail a.active {
+        color: var(--accent);
+        background: var(--accent-soft);
+      }
+
+      .main {
+        padding: 32px 32px 80px;
+        max-width: 960px;
+      }
+
+      section {
+        margin-bottom: 44px;
+      }
+      section h2 {
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.005em;
+        margin: 0 0 4px;
+        color: var(--ink);
+      }
+      section .subtle {
+        color: var(--ink-2);
+        margin: 0 0 18px;
+        font-size: 13px;
+        max-width: 720px;
+      }
+      section .subtle code {
+        background: var(--surface);
+        padding: 1px 5px;
+        border-radius: 4px;
+        color: var(--ink);
+        font-size: 11.5px;
+      }
+
+      /* Subtle help block (replaces heavy help-card) */
+      .help {
+        border-left: 2px solid var(--accent);
+        padding: 2px 12px;
+        color: var(--ink-2);
+        font-size: 12.5px;
+        margin-bottom: 18px;
+        background: transparent;
+      }
+      .help strong { color: var(--ink); font-weight: 600; }
+      .help code {
+        background: var(--surface);
+        padding: 1px 5px;
+        border-radius: 4px;
+        color: var(--ink);
+        font-size: 11.5px;
+      }
+      .help em { font-style: normal; color: var(--ink-2); opacity: 0.85; }
+
+      /* ── Forms ──────────────────────────────────────────────── */
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .field > label {
+        font-size: 10.5px;
+        color: var(--ink-3);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 500;
+      }
+      .field > label .hint {
+        text-transform: none;
+        letter-spacing: 0;
+        color: var(--ink-3);
+        font-weight: 400;
+        opacity: 0.75;
+      }
+
+      input[type="text"],
+      input[type="number"],
+      input[type="password"],
+      select,
+      textarea {
+        color: var(--ink);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 6px 8px;
+        outline: none;
+        width: 100%;
+        font-size: 12.5px;
+        transition: border-color 0.12s;
+      }
+      input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+      input.mono, select.mono, textarea.mono { font-family: var(--mono); font-size: 12px; }
+      input[readonly] { color: var(--ink-2); }
+
+      /* ── Gateway block ──────────────────────────────────────── */
+      .gateway-row {
+        display: grid;
+        grid-template-columns: 100px minmax(0, 1fr);
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      /* ── Route list (flat rows, expandable) ─────────────────── */
+      .routes {
+        border-top: 1px solid var(--border);
+      }
+      .route {
+        border-bottom: 1px solid var(--border);
+      }
+      .route.is-open {
+        background: var(--surface);
+      }
+      .route-head {
+        display: grid;
+        grid-template-columns: 88px 96px minmax(0, 1fr) 24px;
+        align-items: center;
+        gap: 14px;
+        height: 40px;
+        padding: 0 4px 0 12px;
+        cursor: pointer;
+        color: var(--ink);
+        user-select: none;
+        transition: background 0.1s;
+      }
+      .route-head:hover { background: var(--surface); }
+      .route.is-open .route-head { background: transparent; }
+
+      .route-head .prefix {
+        font-family: var(--mono);
+        font-size: 12.5px;
+        color: var(--ink);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .route-head .prefix.empty { color: var(--ink-3); font-style: italic; font-family: var(--sans); }
+
+      .route-head .provider-tag {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--ink-3);
+        text-transform: lowercase;
+      }
+
+      .route-head .meta {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--ink-2);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        display: flex;
+        gap: 10px;
+      }
+      .route-head .meta .arrow { color: var(--ink-3); }
+      .route-head .meta .model {
+        color: var(--accent);
+      }
+
+      .route-head .chev {
+        width: 20px;
+        height: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--ink-3);
+        font-size: 11px;
+        transition: transform 0.15s;
+      }
+      .route.is-open .chev { transform: rotate(180deg); color: var(--ink); }
+
+      .route-body {
+        padding: 6px 12px 16px;
+        display: grid;
+        gap: 10px;
+      }
+      .route-body .fields-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr 2fr;
+        gap: 10px;
+      }
+      .route-body .field-full { grid-column: 1 / -1; }
+
+      .route-body .foot {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+        padding-top: 8px;
+        margin-top: 4px;
+        border-top: 1px dashed var(--border);
+      }
+      .route-body .foot > .spacer { flex: 1; }
+      .route-body .foot .foot-label {
+        font-size: 10.5px;
+        color: var(--ink-3);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        white-space: nowrap;
+      }
+
+      .key-mode {
+        display: inline-flex;
+        gap: 0;
+        padding: 2px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        height: 26px;
+      }
+      .key-mode button {
+        padding: 0 10px;
+        border: 0;
+        background: transparent;
+        color: var(--ink-3);
+        border-radius: 4px;
+        font-size: 11px;
+        height: auto;
+        white-space: nowrap;
+      }
+      .key-mode button.active {
+        background: var(--surface-hover);
+        color: var(--ink);
+      }
+
+      .preset-inline {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .preset-inline select {
+        width: auto;
+        min-width: 140px;
+        height: 26px;
+        font-size: 11.5px;
+        font-family: var(--mono);
+      }
+
+      /* Checkbox row inside a route body (anthropic_format toggle etc.) */
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 2px 0;
+        cursor: pointer;
+        color: var(--ink);
+        font-size: 12.5px;
+      }
+      .checkbox-row input[type="checkbox"] {
+        width: auto;
+        accent-color: var(--accent);
+      }
+      .checkbox-row .hint {
+        color: var(--ink-3);
+        font-size: 11.5px;
+        font-weight: 400;
+      }
+
+      /* Small badge shown in the collapsed route row when a flag is active. */
+      .route-head .flag-badge {
+        font-family: var(--mono);
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 99px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        text-transform: lowercase;
+        letter-spacing: 0.04em;
+      }
+
+      .routes-foot {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 12px;
+        color: var(--ink-3);
+        font-size: 12px;
+      }
+
+      .empty-state {
+        padding: 32px 20px;
+        color: var(--ink-3);
+        font-size: 13px;
+        text-align: center;
+        border: 1px dashed var(--border-strong);
+        border-radius: var(--radius-lg);
+      }
+
+      /* ── Resolver ───────────────────────────────────────────── */
+      .sim {
+        display: grid;
+        grid-template-columns: minmax(280px, 1fr) minmax(0, 1fr);
+        gap: 24px;
+        padding: 14px 0;
+        border-top: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+      }
+      .sim input#sim-input {
+        font-size: 14px;
+        padding: 10px 12px;
+      }
+      .sim-examples {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .sim-label {
+        color: var(--ink-3);
+        font-size: 11.5px;
+        align-self: center;
+      }
+      .sim-example {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        padding: 2px 8px;
+        border-radius: 99px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--ink-2);
+        cursor: pointer;
+      }
+      .sim-example:hover {
+        color: var(--accent);
+        border-color: var(--accent-soft);
+      }
+
+      .sim-result {
+        min-height: 140px;
+      }
+      .sim-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 10px;
+        border-radius: 99px;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 10px;
+      }
+      .sim-badge.ok {
+        background: rgba(95, 208, 161, 0.1);
+        color: var(--good);
+      }
+      .sim-badge.bad {
+        background: rgba(236, 122, 122, 0.1);
+        color: var(--bad);
+      }
+      .sim-badge.idle {
+        background: transparent;
+        color: var(--ink-3);
+        border: 1px solid var(--border);
+      }
+
+      .kv {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap: 4px 14px;
+        font-size: 12px;
+      }
+      .kv .k { color: var(--ink-3); }
+      .kv .v { color: var(--ink); font-family: var(--mono); word-break: break-all; }
+
+      /* ── Outputs / Testing ──────────────────────────────────── */
+      .two-col {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 24px;
+      }
+
+      .col-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      .col-head h3 {
+        font-size: 11px;
+        font-weight: 600;
+        margin: 0;
+        color: var(--ink-2);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .col-actions { display: flex; gap: 4px; }
+
+      pre {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 12px 14px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        overflow-x: auto;
+        white-space: pre;
+        color: var(--ink);
+        margin: 0;
+      }
+
+      .inline-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .form-col { display: flex; flex-direction: column; gap: 10px; }
+
+      .stream-log { max-height: 260px; overflow-y: auto; }
+
+      /* ── Reference ──────────────────────────────────────────── */
+      .reference-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 8px;
+      }
+      .ref-card {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 10px 12px;
+        background: transparent;
+        transition: background 0.1s, border-color 0.1s;
+      }
+      .ref-card:hover {
+        background: var(--surface);
+        border-color: var(--border-strong);
+      }
+      .ref-card h4 {
+        margin: 0 0 4px;
+        font-size: 12.5px;
+        color: var(--ink);
+      }
+      .ref-card p {
+        margin: 0 0 6px;
+        color: var(--ink-3);
+        font-size: 11.5px;
+      }
+      .ref-card a {
+        color: var(--accent);
+        font-size: 11px;
+        text-decoration: none;
+      }
+      .ref-card a:hover { text-decoration: underline; }
+
+      /* ── Misc ───────────────────────────────────────────────── */
+      .notice {
+        font-size: 11.5px;
+        color: var(--ink-3);
+        line-height: 1.6;
+      }
+      .notice code {
+        background: var(--surface);
+        padding: 1px 5px;
+        border-radius: 4px;
+        color: var(--ink-2);
+        font-size: 11px;
+      }
+
+      .hidden { display: none !important; }
+
+      .toast {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        background: var(--surface);
+        border: 1px solid var(--border-strong);
+        padding: 8px 12px;
+        border-radius: var(--radius);
+        font-size: 12px;
+        max-width: 340px;
+        opacity: 0;
+        transform: translateY(6px);
+        transition: opacity 0.15s, transform 0.15s;
+        pointer-events: none;
+        z-index: 100;
+      }
+      .toast.show { opacity: 1; transform: translateY(0); }
+      .toast.error { border-color: rgba(236, 122, 122, 0.4); color: var(--bad); }
+
+      @media (max-width: 900px) {
+        .layout { grid-template-columns: 1fr; }
+        .rail { display: none; }
+        .two-col, .sim { grid-template-columns: 1fr; }
+        .route-head { grid-template-columns: 80px 72px minmax(0, 1fr) 20px; }
+        .route-body .fields-row { grid-template-columns: 1fr; }
+      }
+
+      /* Legacy leftovers kept so older references in JS don't break. */
+      .route-card, .route-card-header, .route-grid, .alias-grid,
+      .route-tag, .card, .panel, .sim-split, .config-split, .test-grid,
+      .flow-diagram, .flow-step, .flow-arrow, .help-card, .gateway-grid,
+      .model-chip-grid, .console-nav, .hero, .hero-grid, .hero-board,
+      .stat-grid, .stat-card, .badge-row, .summary-strip, .path-list,
+      .subsection-title, .eyebrow, .top-controls, .routes, .status,
+      .playground-grid, .field-grid, .config-grid, .actions, .compact-note,
+      .gateway-map, .panel-strong {
+        all: unset;
+      }
+
+      .old-dummy {
+        display: none;
+      }
+        --bg-sunken: #070810;
+        --panel: #12141c;
+        --panel-2: #171a22;
+        --line: rgba(255, 255, 255, 0.07);
+        --line-strong: rgba(255, 255, 255, 0.14);
+        --ink: #e8ebf3;
+        --ink-dim: #aab1c3;
+        --ink-mute: #727a8f;
+        --accent: #6a8cff;
+        --accent-2: #9fb4ff;
+        --good: #5fd0a1;
+        --warn: #e8c06a;
+        --bad: #ec7a7a;
+        --mono: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
+        --sans: "Inter", "Pretendard", "Apple SD Gothic Neo", system-ui, sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+
+      body {
+        min-height: 100vh;
+        color: var(--ink);
+        background: var(--bg);
+        font-family: var(--sans);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      code, kbd, pre, .mono {
+        font-family: var(--mono);
+        font-size: 0.86em;
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding: 10px 22px;
+        background: rgba(10, 11, 16, 0.86);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .topbar .brand {
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+
+      .topbar .brand em {
+        font-style: normal;
+        color: var(--accent-2);
+      }
+
+      .topbar .status-chips {
+        display: flex;
+        gap: 8px;
+        margin-left: 6px;
+        flex-wrap: wrap;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        color: var(--ink-dim);
+        font-size: 12px;
+      }
+
+      .chip strong {
+        color: var(--ink);
+      }
+
+      .topbar .spacer { flex: 1; }
+
+      .topbar .actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      button {
+        font-family: inherit;
+        font-size: 13px;
+        padding: 7px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--line-strong);
+        background: var(--panel-2);
+        color: var(--ink);
+        cursor: pointer;
+        transition: background 0.12s, border-color 0.12s;
+      }
+
+      button:hover {
+        background: #1c2030;
+        border-color: rgba(255, 255, 255, 0.22);
+      }
+
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #0b0d14;
+        font-weight: 600;
+      }
+
+      button.primary:hover { background: var(--accent-2); }
+      button.ghost { background: transparent; }
+
+      button.danger {
+        color: var(--bad);
+        border-color: rgba(236, 122, 122, 0.3);
+      }
+
+      button.danger:hover { background: rgba(236, 122, 122, 0.08); }
+
+      .lang-btn {
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+        gap: 0;
+        min-height: calc(100vh - 47px);
+      }
+
+      .rail {
+        padding: 18px 14px;
+        border-right: 1px solid var(--line);
+        position: sticky;
+        top: 47px;
+        align-self: start;
+        height: calc(100vh - 47px);
+        overflow-y: auto;
+      }
+
+      .rail nav {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .rail a {
+        display: block;
+        padding: 7px 10px;
+        border-radius: 6px;
+        color: var(--ink-dim);
+        text-decoration: none;
+        font-size: 13px;
+        border-left: 2px solid transparent;
+      }
+
+      .rail a:hover {
+        color: var(--ink);
+        background: var(--panel);
+      }
+
+      .rail a.active {
+        color: var(--accent-2);
+        border-left-color: var(--accent);
+        background: rgba(106, 140, 255, 0.06);
+      }
+
+      .rail .rail-head {
+        font-size: 11px;
+        color: var(--ink-mute);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 10px 10px 6px;
+      }
+
+      .main {
+        padding: 28px 34px 60px;
+        max-width: 1000px;
+      }
+
+      section.panel {
+        margin-bottom: 28px;
+      }
+
+      section.panel h2 {
+        font-size: 19px;
+        letter-spacing: -0.01em;
+        margin: 0 0 6px;
+      }
+
+      section.panel .subtle {
+        color: var(--ink-dim);
+        margin: 0 0 14px;
+        font-size: 13.5px;
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px;
+      }
+
+      .card + .card { margin-top: 10px; }
+
+      .help-card {
+        background: rgba(106, 140, 255, 0.05);
+        border: 1px solid rgba(106, 140, 255, 0.18);
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin-bottom: 14px;
+        font-size: 13px;
+        color: var(--ink-dim);
+        line-height: 1.65;
+      }
+
+      .help-card strong { color: var(--ink); }
+      .help-card code {
+        background: var(--bg-sunken);
+        padding: 1px 5px;
+        border-radius: 4px;
+        color: var(--accent-2);
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .field > label {
+        font-size: 11px;
+        color: var(--ink-mute);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .field > label .hint {
+        text-transform: none;
+        letter-spacing: 0;
+        color: var(--ink-mute);
+        font-size: 11px;
+        font-weight: 400;
+      }
+
+      input[type="text"],
+      input[type="number"],
+      input[type="password"],
+      select,
+      textarea {
+        font: inherit;
+        color: var(--ink);
+        background: var(--bg-sunken);
+        border: 1px solid var(--line-strong);
+        border-radius: 7px;
+        padding: 7px 10px;
+        outline: none;
+        width: 100%;
+      }
+
+      input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+
+      input.mono, select.mono, textarea.mono { font-family: var(--mono); }
+
+      .route-grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 10px;
+      }
+
+      .route-grid .c-prefix { grid-column: span 3; }
+      .route-grid .c-provider { grid-column: span 3; }
+      .route-grid .c-model { grid-column: span 3; }
+      .route-grid .c-remove { grid-column: span 3; display: flex; align-items: end; justify-content: flex-end; }
+      .route-grid .c-base { grid-column: span 12; }
+      .route-grid .c-key { grid-column: span 8; }
+      .route-grid .c-key-mode { grid-column: span 4; }
+
+      .route-card { position: relative; }
+
+      .route-card-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .route-card-header .route-tag { margin: 0; }
+      .route-card-header .spacer { flex: 1; }
+
+      .route-card .route-tag {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--bg-sunken);
+        border: 1px solid var(--line);
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--ink-dim);
+      }
+
+      .route-card .route-tag strong { color: var(--accent-2); }
+
+      .preset-picker {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .preset-picker > label {
+        font-size: 11px;
+        color: var(--ink-mute);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .preset-picker select {
+        width: auto;
+        min-width: 180px;
+        padding: 4px 8px;
+        font-size: 12px;
+        font-family: var(--mono);
+      }
+
+      .key-mode {
+        display: flex;
+        gap: 4px;
+        padding: 2px;
+        background: var(--bg-sunken);
+        border: 1px solid var(--line-strong);
+        border-radius: 7px;
+        height: 32px;
+      }
+
+      .key-mode button {
+        flex: 1;
+        padding: 0 10px;
+        border: 0;
+        background: transparent;
+        color: var(--ink-dim);
+        border-radius: 5px;
+        font-size: 12px;
+      }
+
+      .key-mode button.active {
+        background: var(--panel-2);
+        color: var(--ink);
+      }
+
+      .empty-state {
+        padding: 18px;
+        color: var(--ink-mute);
+        font-size: 13px;
+        border: 1px dashed var(--line-strong);
+        border-radius: 10px;
+        text-align: center;
+      }
+
+      .add-row {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 10px;
+      }
+
+      pre {
+        background: var(--bg-sunken);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px;
+        font-family: var(--mono);
+        font-size: 12.5px;
+        overflow-x: auto;
+        white-space: pre;
+        color: var(--ink);
+        margin: 0;
+      }
+
+      .sim-split {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 14px;
+      }
+
+      .sim-result { min-height: 220px; }
+
+      .sim-badge {
+        display: inline-flex;
+        padding: 2px 10px;
+        border-radius: 999px;
+        font-family: var(--mono);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 10px;
+      }
+
+      .sim-badge.ok {
+        background: rgba(95, 208, 161, 0.12);
+        color: var(--good);
+        border: 1px solid rgba(95, 208, 161, 0.3);
+      }
+
+      .sim-badge.bad {
+        background: rgba(236, 122, 122, 0.1);
+        color: var(--bad);
+        border: 1px solid rgba(236, 122, 122, 0.3);
+      }
+
+      .sim-badge.idle {
+        background: var(--panel);
+        color: var(--ink-mute);
+        border: 1px solid var(--line);
+      }
+
+      .sim-examples {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .sim-example {
+        font-family: var(--mono);
+        font-size: 12px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        color: var(--ink-dim);
+        cursor: pointer;
+      }
+
+      .sim-example:hover {
+        color: var(--accent-2);
+        border-color: rgba(106, 140, 255, 0.4);
+      }
+
+      .kv-list {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap: 6px 14px;
+        font-size: 13px;
+      }
+
+      .kv-list .k { color: var(--ink-mute); }
+      .kv-list .v {
+        color: var(--ink);
+        font-family: var(--mono);
+        word-break: break-all;
+      }
+
+      .config-split {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 14px;
+      }
+
+      .config-split .card {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .inline-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .toast {
+        position: fixed;
+        right: 22px;
+        bottom: 22px;
+        background: var(--panel-2);
+        border: 1px solid var(--line-strong);
+        padding: 10px 14px;
+        border-radius: 10px;
+        font-size: 13px;
+        max-width: 380px;
+        opacity: 0;
+        transform: translateY(6px);
+        transition: opacity 0.15s, transform 0.15s;
+        pointer-events: none;
+        z-index: 100;
+      }
+
+      .toast.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .toast.error {
+        border-color: rgba(236, 122, 122, 0.4);
+        color: var(--bad);
+      }
+
+      .reference-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 10px;
+      }
+
+      .ref-card {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px;
+        background: var(--panel);
+      }
+
+      .ref-card h4 {
+        margin: 0 0 6px;
+        font-size: 13px;
+      }
+
+      .ref-card p {
+        margin: 0 0 8px;
+        color: var(--ink-dim);
+        font-size: 12px;
+      }
+
+      .ref-card a {
+        color: var(--accent-2);
+        font-size: 12px;
+        text-decoration: none;
+      }
+
+      .ref-card a:hover { text-decoration: underline; }
+
+      .notice {
+        font-size: 12px;
+        color: var(--ink-mute);
+        line-height: 1.65;
+      }
+
+      .notice code {
+        background: var(--bg-sunken);
+        padding: 1px 5px;
+        border-radius: 4px;
+        color: var(--ink-dim);
+      }
+
+      .row-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .row-head h3 {
+        margin: 0;
+        font-size: 13px;
+        color: var(--ink);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .row-head .meta {
+        color: var(--ink-mute);
+        font-size: 12px;
+      }
+
+      .hidden { display: none !important; }
+
+      .stream-log {
+        max-height: 260px;
+        overflow-y: auto;
+      }
+
+      .test-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 14px;
+      }
+
+      .flow-diagram {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr auto 1fr;
+        gap: 10px;
+        align-items: center;
+        margin-top: 14px;
+        font-size: 12.5px;
+      }
+
+      .flow-step {
+        background: var(--bg-sunken);
+        border: 1px solid var(--line);
+        padding: 10px 12px;
+        border-radius: 8px;
+        color: var(--ink-dim);
+      }
+
+      .flow-step strong {
+        display: block;
+        color: var(--ink);
+        margin-bottom: 3px;
+        font-size: 12px;
+      }
+
+      .flow-arrow {
+        color: var(--ink-mute);
+        font-family: var(--mono);
+      }
+
+      @media (max-width: 960px) {
+        .layout { grid-template-columns: 1fr; }
+        .rail { display: none; }
+        .config-split, .sim-split, .test-grid { grid-template-columns: 1fr; }
+        .flow-diagram { grid-template-columns: 1fr; }
+        .flow-arrow { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">Prism <em data-i18n="brand_sub">Builder</em></div>
+      <div class="status-inline">
+        <span><span data-i18n="chip_routes">Routes</span> <strong id="chip-routes">0</strong></span>
+        <span><span data-i18n="chip_base">Base</span> <strong id="chip-base">http://127.0.0.1:8088</strong></span>
+      </div>
+      <div class="spacer"></div>
+      <div class="actions">
+        <button id="btn-lang" class="lang-btn ghost"></button>
+        <button id="btn-save" class="ghost" data-i18n="btn_save">Save</button>
+        <button id="btn-copy-toml" class="ghost" data-i18n="btn_copy_toml">Copy TOML</button>
+        <button class="primary" id="btn-download-toml" data-i18n="btn_download">Download</button>
+        <button class="danger ghost" id="btn-reset" data-i18n="btn_reset">Reset</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="rail">
+        <div class="rail-head" data-i18n="rail_head">Configuration</div>
+        <nav>
+          <a href="#section-gateway" class="active" data-i18n="rail_gateway">Gateway</a>
+          <a href="#section-routes" data-i18n="rail_routes">Routes</a>
+          <a href="#section-simulator" data-i18n="rail_resolver">Resolver</a>
+          <a href="#section-outputs" data-i18n="rail_outputs">Outputs</a>
+          <a href="#section-testing" data-i18n="rail_testing">Testing</a>
+          <a href="#section-reference" data-i18n="rail_reference">Reference</a>
+        </nav>
+      </aside>
+
+      <main class="main">
+        <section id="section-gateway">
+          <h2 data-i18n="gateway_title">Gateway</h2>
+          <p class="subtle" data-i18n="gateway_subtitle">One base URL in front, many providers behind. Claude Code points at this URL; Prism decides which upstream to call for each request.</p>
+          <div class="help" data-i18n-html="gateway_help_html"></div>
+
+          <div class="gateway-row">
+            <div class="field">
+              <label data-i18n="lbl_port">Port</label>
+              <input id="port-input" type="number" min="1" max="65535" value="8088" />
+            </div>
+            <div class="field">
+              <label data-i18n="lbl_base">Base URL</label>
+              <input id="base-url-display" class="mono" readonly />
+            </div>
+          </div>
+        </section>
+
+        <section id="section-routes">
+          <h2 data-i18n="routes_title">Routes</h2>
+          <p class="subtle" data-i18n="routes_subtitle">Each row is one upstream provider. Every route needs a <strong>prefix</strong>. Add an optional <strong>default model</strong> to turn the prefix into a short alias for a single upstream model.</p>
+          <div class="help" data-i18n-html="routes_help_html"></div>
+
+          <div id="routes-list" class="routes"></div>
+          <div class="routes-foot">
+            <span class="notice" id="routes-count">0 routes</span>
+            <button id="btn-add-route" data-i18n="btn_add_route">+ Add route</button>
+          </div>
+        </section>
+
+        <section id="section-simulator">
+          <h2 data-i18n="simulator_title">Resolver</h2>
+          <p class="subtle" data-i18n="simulator_subtitle">Type any model string to see which rule matches, which route receives it, and what ends up on the wire.</p>
+
+          <div class="sim">
+            <div>
+              <div class="field">
+                <label data-i18n="sim_input">Model string</label>
+                <input id="sim-input" class="mono" placeholder="e.g. main, fw/deepseek-v3, glm-4.5" />
+              </div>
+              <div class="sim-examples">
+                <span class="sim-label" data-i18n="sim_examples">Try:</span>
+                <span class="sim-example" data-example="main">main</span>
+                <span class="sim-example" data-example="fw/deepseek-v3">fw/deepseek-v3</span>
+                <span class="sim-example" data-example="glm-4.5">glm-4.5</span>
+              </div>
+              <p class="notice" data-i18n-html="sim_hint_html" style="margin-top: 14px"></p>
+            </div>
+            <div class="sim-result">
+              <div id="sim-badge" class="sim-badge idle">idle</div>
+              <div id="sim-body" class="kv"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="section-outputs">
+          <h2 data-i18n="outputs_title">Outputs</h2>
+          <p class="subtle" data-i18n="outputs_subtitle">Save the TOML anywhere and pass it via <code>PRISM_CONFIG=./path</code>. Paste the JSON into your Claude Code settings.</p>
+          <div class="two-col">
+            <div>
+              <div class="col-head">
+                <h3 data-i18n="outputs_toml">Prism config (TOML)</h3>
+                <div class="col-actions">
+                  <button id="btn-copy-toml-2" class="ghost" data-i18n="btn_copy">Copy</button>
+                  <button class="primary" id="btn-download-toml-2" data-i18n="btn_download_short">Download</button>
+                </div>
+              </div>
+              <pre id="toml-preview"></pre>
+            </div>
+            <div>
+              <div class="col-head">
+                <h3 data-i18n="outputs_claude">Claude Code settings.json</h3>
+                <div class="col-actions">
+                  <button id="btn-copy-claude" class="ghost" data-i18n="btn_copy">Copy</button>
+                  <button class="primary" id="btn-download-claude" data-i18n="btn_download_short">Download</button>
+                </div>
+              </div>
+              <div class="field" style="margin-bottom: 8px">
+                <label data-i18n="tier_sonnet">Sonnet tier (main coding model)</label>
+                <input id="sel-sonnet" class="mono" list="model-suggestions" placeholder="e.g. main, fw/deepseek-v3, glm-4.5" />
+              </div>
+              <div class="field" style="margin-bottom: 8px">
+                <label data-i18n="tier_haiku">Haiku tier (fast background)</label>
+                <input id="sel-haiku" class="mono" list="model-suggestions" placeholder="e.g. fast, groq/llama-3.1-8b" />
+              </div>
+              <div class="field" style="margin-bottom: 8px">
+                <label data-i18n="tier_opus">Opus tier (heavy lifting)</label>
+                <input id="sel-opus" class="mono" list="model-suggestions" placeholder="(optional) e.g. glm-4.6" />
+              </div>
+              <datalist id="model-suggestions"></datalist>
+              <pre id="claude-preview"></pre>
+              <p class="notice" data-i18n-html="outputs_notice_html" style="margin-top: 10px"></p>
+              <p class="notice" data-i18n-html="outputs_paths_html"></p>
+            </div>
+          </div>
+        </section>
+
+        <section id="section-testing">
+          <h2 data-i18n="testing_title">Testing</h2>
+          <p class="subtle" data-i18n="testing_subtitle">Call upstream providers directly, bypassing Prism's routing — useful for sanity-checking credentials.</p>
+          <div class="two-col">
+            <div class="form-col">
+              <div class="col-head"><h3 data-i18n="ping_title">Upstream ping</h3></div>
+              <p class="notice" data-i18n="ping_hint"></p>
+              <div class="field">
+                <label data-i18n="lbl_route">Route</label>
+                <select id="test-route" class="mono"></select>
+              </div>
+              <div class="field">
+                <label data-i18n="lbl_model">Model (sent as-is to upstream)</label>
+                <input id="test-model" class="mono" placeholder="e.g. glm-4.5" />
+              </div>
+              <div class="inline-actions">
+                <button class="primary" id="btn-run-test" data-i18n="btn_run_ping">Run ping</button>
+              </div>
+              <div id="test-status" class="notice"></div>
+              <pre id="test-body" class="hidden"></pre>
+            </div>
+            <div class="form-col">
+              <div class="col-head"><h3 data-i18n="stream_title">Streaming playground</h3></div>
+              <p class="notice" data-i18n="stream_hint"></p>
+              <div class="field">
+                <label data-i18n="lbl_route">Route</label>
+                <select id="stream-route" class="mono"></select>
+              </div>
+              <div class="field">
+                <label data-i18n="lbl_model">Model (sent as-is to upstream)</label>
+                <input id="stream-model" class="mono" placeholder="e.g. glm-4.5" />
+              </div>
+              <div class="field">
+                <label data-i18n="stream_scenario">Scenario</label>
+                <select id="stream-scenario">
+                  <option value="text" data-i18n="stream_text">Text turn</option>
+                  <option value="tool" data-i18n="stream_tool">Tool call</option>
+                </select>
+              </div>
+              <div class="field">
+                <label data-i18n="stream_prompt">Prompt (optional)</label>
+                <textarea id="stream-prompt" rows="2"></textarea>
+              </div>
+              <div class="inline-actions">
+                <button class="primary" id="btn-run-stream" data-i18n="btn_start_stream">Start stream</button>
+              </div>
+              <div id="stream-status" class="notice"></div>
+              <div class="col-head" style="margin-top: 8px"><h3 data-i18n="conformance">Conformance summary</h3></div>
+              <pre id="stream-summary"></pre>
+              <div class="col-head" style="margin-top: 8px"><h3 data-i18n="event_log">Event log</h3></div>
+              <pre id="stream-log" class="stream-log"></pre>
+            </div>
+          </div>
+        </section>
+
+        <section id="section-reference">
+          <h2 data-i18n="reference_title">Provider Reference</h2>
+          <p class="subtle" data-i18n="reference_subtitle">Links to official documentation. Prism is not affiliated with any of these providers.</p>
+          <div class="reference-grid" id="reference-grid"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="presets.js"></script>
+    <script>
+      /* ==========================================================
+       * i18n — English default, Korean toggle.
+       * ==========================================================
+       */
+
+      const I18N = {
+        en: {
+          lang_short: "EN",
+          lang_toggle_to: "한국어",
+
+          brand_sub: "Builder",
+          chip_port: "Port",
+          chip_routes: "Routes",
+          chip_base: "Base",
+          btn_save: "Save",
+          btn_copy_toml: "Copy TOML",
+          btn_download: "Download",
+          btn_reset: "Reset",
+
+          rail_head: "Configuration",
+          rail_gateway: "Gateway",
+          rail_routes: "Routes",
+          rail_resolver: "Resolver",
+          rail_outputs: "Outputs",
+          rail_testing: "Testing",
+          rail_reference: "Reference",
+
+          gateway_title: "Gateway",
+          gateway_subtitle: "One base URL in front, many providers behind. Claude Code points at this URL; Prism decides which upstream to call for each request.",
+          gateway_help_html:
+            "<strong>Setup in Claude Code:</strong> point <code>ANTHROPIC_BASE_URL</code> at this URL, then override the tier models via <code>ANTHROPIC_DEFAULT_HAIKU_MODEL</code>, <code>ANTHROPIC_DEFAULT_SONNET_MODEL</code>, <code>ANTHROPIC_DEFAULT_OPUS_MODEL</code>, and <code>ANTHROPIC_SMALL_FAST_MODEL</code>. Each value can be a route's prefix with a default model (e.g. <code>main</code>), a namespaced model (e.g. <code>fw/deepseek-v3</code>), or a raw-prefix name (e.g. <code>glm-4.5</code>) — Prism routes each slot to the matching provider.",
+          lbl_port: "Port",
+          lbl_base: "Base URL (auto-generated)",
+          flow_step1_html: "<strong>1. Client → Prism</strong>Claude Code sends to the gateway URL, same as it would to Anthropic.",
+          flow_step2_html: "<strong>2. Prism resolves</strong>Looks at the model string: exact-default, then namespace, then raw prefix.",
+          flow_step3_html: "<strong>3. Prism → Provider</strong>Forwards the request, rewriting the model name when needed.",
+
+          routes_title: "Routes",
+          routes_subtitle_html: "Each row is one upstream provider. Every route needs a <strong>prefix</strong>. Add an optional <strong>default model</strong> to turn the prefix into a short alias for a single upstream model.",
+          routes_help_html:
+            "<strong>Matching.</strong> <code>prefix = \"fw\"</code> makes <code>fw/deepseek-v3</code> strip to <code>deepseek-v3</code> (<em>namespace</em>) and <code>fw-7b</code> forward unchanged (<em>raw prefix</em>). Add <code>model = \"accounts/…/kimi-k2p5\"</code> and a bare <code>fw</code> resolves to that model (<em>exact-default</em>).",
+          routes_empty: "No routes yet. Click \"+ Add route\" to create one.",
+          btn_add_route: "+ Add route",
+          route_prefix: "prefix",
+          route_prefix_hint: "required — matches model names",
+          route_provider: "provider",
+          route_base: "base URL",
+          route_api_key: "api key",
+          route_api_key_env: "api key env var",
+          route_key_mode: "key mode",
+          route_key_inline: "inline",
+          route_key_env: "env var",
+          route_model: "default model",
+          route_model_hint: "optional — upstream model when request equals prefix",
+          btn_remove: "Remove",
+          route_tag_unconfigured: "unconfigured",
+          route_ph_prefix: "e.g. glm",
+          route_ph_base: "https://...",
+          route_ph_env: "e.g. FIREWORKS_API_KEY",
+          route_ph_key: "sk-...",
+          route_ph_model: "e.g. accounts/fireworks/models/kimi-k2p5",
+          route_preset: "Preset",
+          route_preset_hint: "Fills base URL, provider, and the Anthropic-format flag when the preset specifies it. Never touches prefix, default model, or api key.",
+          route_preset_placeholder: "Apply preset…",
+          route_anthropic_format: "Anthropic format (passthrough)",
+          route_anthropic_format_hint: "Skip OpenAI translation; use x-api-key + anthropic-version headers; upstream path {base}/messages.",
+
+          simulator_title: "Resolver",
+          simulator_subtitle: "Type any model string. Prism tells you which rule matched, which route receives it, and what model name ends up at the upstream.",
+          sim_input: "Model string",
+          sim_input_ph: "e.g. main, fw/deepseek-v3, glm-4.5",
+          sim_hint_html: "Three match rules, tried in order: <strong>exact-default</strong> (<code>model == prefix</code> on a route that has <code>model = …</code>) → <strong>namespace</strong> (<code>prefix/rest</code>, prefix is stripped) → <strong>raw prefix</strong> (<code>prefix-rest</code>, name forwarded unchanged).",
+          sim_examples: "Try:",
+          sim_examples_hint: "Examples assume routes with prefix=main (default model set), prefix=fw, prefix=glm.",
+          sim_idle: "idle",
+          sim_empty: "empty",
+          sim_nomatch: "no match",
+          sim_error: "error",
+          sim_k_input: "input",
+          sim_k_upstream: "upstream model",
+          sim_k_route_prefix: "route prefix",
+          sim_k_route_model: "route default model",
+          sim_k_provider: "provider",
+          sim_k_base: "base",
+          sim_k_warnings: "warnings",
+          sim_k_catalog: "catalog",
+          sim_k_error: "error",
+          sim_none: "(none)",
+          sim_input_empty: "(empty)",
+
+          outputs_title: "Outputs",
+          outputs_subtitle_html: "Save the TOML anywhere and pass it via <code>PRISM_CONFIG=./path</code>. Paste the JSON into your Claude Code settings.",
+          outputs_toml: "Prism config (TOML)",
+          outputs_claude: "Claude Code settings.json",
+          tier_haiku: "Haiku tier (fast background)",
+          tier_sonnet: "Sonnet tier (main coding model)",
+          tier_opus: "Opus tier (heavy lifting)",
+          btn_copy: "Copy",
+          btn_download_short: "Download",
+          outputs_notice_html:
+            "The Sonnet value also fills the top-level <code>\"model\"</code> (initial <code>/model</code> selection). The Haiku value also fills <code>ANTHROPIC_SMALL_FAST_MODEL</code> (tool-routing and classifier calls).",
+          outputs_paths_html:
+            "<strong>Settings file locations</strong><br>Per-project: <code>.claude/settings.local.json</code><br>User (macOS / Linux): <code>~/.claude/settings.json</code><br>User (Windows): <code>%USERPROFILE%\\.claude\\settings.json</code>",
+
+          testing_title: "Testing",
+          testing_subtitle: "Try upstream providers directly without going through Prism's routing.",
+          ping_title: "Upstream Ping",
+          ping_hint: "Sends one chat/completions request directly to the provider. The model field goes as-is — no alias, no namespace rewriting.",
+          stream_title: "Streaming Playground",
+          stream_hint: "Opens an upstream stream and shows the Anthropic SSE frames Prism produces from it. Useful for spotting conformance issues (missing message_start, unclosed content_block, etc.).",
+          lbl_route: "Route",
+          lbl_model: "Model (sent as-is to upstream)",
+          btn_run_ping: "Run upstream ping",
+          stream_scenario: "Scenario",
+          stream_text: "Text turn",
+          stream_tool: "Tool call",
+          stream_prompt: "Prompt (optional)",
+          stream_prompt_ph: "Leave empty to use the default prompt.",
+          btn_start_stream: "Start stream",
+          conformance: "Conformance summary",
+          event_log: "Event log",
+          test_need_inputs: "Select a route and fill in the model.",
+          test_calling: "Calling upstream…",
+          test_ok: "ok · status {status} · provider {provider}",
+          test_fail: "fail · status {status} · {error}",
+          stream_connecting: "Opening stream…",
+          stream_streaming: "streaming…",
+          stream_done: "done · {n} event(s)",
+          stream_failed: "failed · {status} · {body}",
+          stream_no_routes: "(no routes)",
+
+          reference_title: "Provider Reference",
+          reference_subtitle: "Links to official documentation. Prism is not affiliated with any of these providers.",
+          ref_docs: "docs →",
+          ref_note_zai: "Hosts glm-* models. Use provider=zai.",
+          ref_note_fw: "Model IDs look like accounts/fireworks/models/*. Use provider=fireworks.",
+          ref_note_openai: "Official OpenAI endpoint.",
+          ref_note_groq: "OpenAI-compatible. Use provider=openai.",
+          ref_note_deepseek: "OpenAI-compatible.",
+          ref_note_gemini: "OpenAI-compatible beta endpoint.",
+          ref_note_minimax: "OpenAI-compatible.",
+
+          toast_saved: "Saved to browser",
+          toast_copied: "{label} copied",
+          toast_copy_failed: "Copy failed: {err}",
+          toast_preset_applied: "Applied preset: {name}",
+          confirm_reset: "This clears all routes and aliases. Continue?",
+          label_toml: "TOML",
+          label_claude_json: "settings.json",
+        },
+
+        ko: {
+          lang_short: "KO",
+          lang_toggle_to: "English",
+
+          brand_sub: "Builder",
+          chip_port: "Port",
+          chip_routes: "Routes",
+          chip_base: "Base",
+          btn_save: "저장",
+          btn_copy_toml: "TOML 복사",
+          btn_download: "다운로드",
+          btn_reset: "초기화",
+
+          rail_head: "설정",
+          rail_gateway: "게이트웨이",
+          rail_routes: "라우트",
+          rail_resolver: "리졸버",
+          rail_outputs: "결과물",
+          rail_testing: "테스트",
+          rail_reference: "참고 링크",
+
+          gateway_title: "Gateway",
+          gateway_subtitle: "앞단은 하나의 base URL, 뒷단은 여러 provider. Claude Code는 이 URL만 바라보고, Prism이 요청마다 어떤 upstream으로 보낼지 정합니다.",
+          gateway_help_html:
+            "<strong>Claude Code 설정:</strong> <code>ANTHROPIC_BASE_URL</code>을 이 URL로 맞추고, 티어별 모델을 <code>ANTHROPIC_DEFAULT_HAIKU_MODEL</code>, <code>ANTHROPIC_DEFAULT_SONNET_MODEL</code>, <code>ANTHROPIC_DEFAULT_OPUS_MODEL</code>, <code>ANTHROPIC_SMALL_FAST_MODEL</code>로 덮어씌우세요. 각 값에는 default model이 설정된 라우트의 prefix(예: <code>main</code>), namespace 모델명(예: <code>fw/deepseek-v3</code>), 또는 raw prefix 이름(예: <code>glm-4.5</code>)을 넣을 수 있습니다. Prism이 슬롯마다 맞는 provider로 라우팅합니다.",
+          lbl_port: "Port",
+          lbl_base: "Base URL (자동 생성)",
+          flow_step1_html: "<strong>1. Client → Prism</strong>Claude Code가 평소처럼 게이트웨이 URL로 요청을 보냅니다.",
+          flow_step2_html: "<strong>2. Prism이 해석</strong>모델명을 보고 exact-default → namespace → raw prefix 순서로 매칭합니다.",
+          flow_step3_html: "<strong>3. Prism → Provider</strong>필요하면 모델명을 교체한 뒤 upstream에 그대로 전달합니다.",
+
+          routes_title: "Routes",
+          routes_subtitle_html: "한 줄 = upstream provider 하나. 모든 라우트는 <strong>prefix</strong>가 필요합니다. 선택적 <strong>default model</strong>을 같이 두면 그 prefix가 특정 upstream 모델 하나를 가리키는 짧은 별명이 됩니다.",
+          routes_help_html:
+            "<strong>매칭.</strong> <code>prefix = \"fw\"</code>이면 <code>fw/deepseek-v3</code>는 prefix 제거 후 <code>deepseek-v3</code>로 전송(<em>namespace</em>), <code>fw-7b</code>는 변경 없이 전달(<em>raw prefix</em>). <code>model = \"accounts/…/kimi-k2p5\"</code>를 더하면 순수 <code>fw</code>는 그 모델로 해석됩니다(<em>exact-default</em>).",
+          routes_empty: "라우트가 없습니다. \"+ 라우트 추가\"를 눌러 시작하세요.",
+          btn_add_route: "+ 라우트 추가",
+          route_prefix: "prefix",
+          route_prefix_hint: "필수 — 모델명 매칭 키",
+          route_provider: "provider",
+          route_base: "base URL",
+          route_api_key: "api key",
+          route_api_key_env: "api key 환경변수",
+          route_key_mode: "key 방식",
+          route_key_inline: "직접 입력",
+          route_key_env: "환경변수",
+          route_model: "default model",
+          route_model_hint: "선택 — 요청=prefix일 때 보낼 upstream 모델",
+          btn_remove: "삭제",
+          route_tag_unconfigured: "미설정",
+          route_ph_prefix: "예: glm",
+          route_ph_base: "https://...",
+          route_ph_env: "예: FIREWORKS_API_KEY",
+          route_ph_key: "sk-...",
+          route_ph_model: "예: accounts/fireworks/models/kimi-k2p5",
+          route_preset: "프리셋",
+          route_preset_hint: "base URL과 provider, 그리고 프리셋이 지정한 경우 Anthropic 포맷 플래그까지 채웁니다. prefix, default model, api key는 건드리지 않습니다.",
+          route_preset_placeholder: "프리셋 적용…",
+          route_anthropic_format: "Anthropic 포맷 (passthrough)",
+          route_anthropic_format_hint: "OpenAI 변환을 건너뛰고 x-api-key + anthropic-version 헤더로 {base}/messages에 직접 전송합니다.",
+
+          simulator_title: "Resolver",
+          simulator_subtitle: "모델명을 입력하면 어떤 규칙으로 어느 route에 가고, upstream에 어떤 이름이 전송되는지 보여줍니다.",
+          sim_input: "모델명",
+          sim_input_ph: "예: main, fw/deepseek-v3, glm-4.5",
+          sim_hint_html: "매칭 순서 3단계: <strong>exact-default</strong>(<code>model == prefix</code>이고 route에 <code>model = …</code>이 설정된 경우) → <strong>namespace</strong>(<code>prefix/rest</code>, prefix 제거) → <strong>raw prefix</strong>(<code>prefix-rest</code>, 이름 변경 없이 전달).",
+          sim_examples: "예시:",
+          sim_examples_hint: "예시는 prefix=main(default model 설정), prefix=fw, prefix=glm 라우트가 있다고 가정합니다.",
+          sim_idle: "대기",
+          sim_empty: "빈 입력",
+          sim_nomatch: "매칭 없음",
+          sim_error: "오류",
+          sim_k_input: "입력",
+          sim_k_upstream: "upstream 모델",
+          sim_k_route_prefix: "route prefix",
+          sim_k_route_model: "route default model",
+          sim_k_provider: "provider",
+          sim_k_base: "base",
+          sim_k_warnings: "경고",
+          sim_k_catalog: "카탈로그",
+          sim_k_error: "오류",
+          sim_none: "(없음)",
+          sim_input_empty: "(비어 있음)",
+
+          outputs_title: "Outputs",
+          outputs_subtitle_html: "TOML은 원하는 경로에 저장하고 <code>PRISM_CONFIG=./path</code>로 연결합니다. JSON은 Claude Code 설정 파일에 붙여넣으세요.",
+          outputs_toml: "Prism 설정 (TOML)",
+          outputs_claude: "Claude Code settings.json",
+          tier_haiku: "Haiku 티어 (백그라운드 빠른 모델)",
+          tier_sonnet: "Sonnet 티어 (메인 코딩 모델)",
+          tier_opus: "Opus 티어 (고난도 작업)",
+          btn_copy: "복사",
+          btn_download_short: "다운로드",
+          outputs_notice_html:
+            "Sonnet 값은 최상위 <code>\"model\"</code>(처음 시작할 때 선택되는 모델)에도 그대로 들어갑니다. Haiku 값은 <code>ANTHROPIC_SMALL_FAST_MODEL</code>(툴 라우팅·분류용 초경량 모델)에도 같이 들어갑니다.",
+          outputs_paths_html:
+            "<strong>설정 파일 위치</strong><br>프로젝트별: <code>.claude/settings.local.json</code><br>유저 전역 (macOS / Linux): <code>~/.claude/settings.json</code><br>유저 전역 (Windows): <code>%USERPROFILE%\\.claude\\settings.json</code>",
+
+          testing_title: "Testing",
+          testing_subtitle: "Prism 라우팅을 거치지 않고 upstream을 직접 한 번 호출해 봅니다.",
+          ping_title: "Upstream Ping",
+          ping_hint: "chat/completions 요청을 provider에 바로 보냅니다. 모델명은 alias나 namespace 변환 없이 그대로 전송됩니다.",
+          stream_title: "Streaming Playground",
+          stream_hint: "upstream 스트림을 열고 Prism이 생성하는 Anthropic SSE 이벤트를 보여줍니다. conformance 이슈(누락된 message_start, 안 닫힌 content_block 등)를 확인할 때 유용합니다.",
+          lbl_route: "Route",
+          lbl_model: "모델 (upstream으로 그대로 전송)",
+          btn_run_ping: "ping 실행",
+          stream_scenario: "시나리오",
+          stream_text: "일반 대화",
+          stream_tool: "Tool 호출",
+          stream_prompt: "프롬프트 (선택)",
+          stream_prompt_ph: "비워두면 기본 프롬프트가 사용됩니다.",
+          btn_start_stream: "스트림 시작",
+          conformance: "Conformance summary",
+          event_log: "Event log",
+          test_need_inputs: "route와 모델을 지정하세요.",
+          test_calling: "업스트림 호출 중…",
+          test_ok: "ok · status {status} · provider {provider}",
+          test_fail: "fail · status {status} · {error}",
+          stream_connecting: "스트림 여는 중…",
+          stream_streaming: "스트리밍 중…",
+          stream_done: "완료 · 이벤트 {n}개",
+          stream_failed: "실패 · {status} · {body}",
+          stream_no_routes: "(라우트 없음)",
+
+          reference_title: "Provider Reference",
+          reference_subtitle: "공식 문서 링크. Prism은 어느 provider와도 제휴 관계가 없습니다.",
+          ref_docs: "문서 →",
+          ref_note_zai: "glm-* 모델 호스팅. provider=zai 권장.",
+          ref_note_fw: "모델 ID는 accounts/fireworks/models/* 형식. provider=fireworks.",
+          ref_note_openai: "OpenAI 공식 endpoint.",
+          ref_note_groq: "OpenAI 호환. provider=openai.",
+          ref_note_deepseek: "OpenAI 호환.",
+          ref_note_gemini: "OpenAI 호환 beta endpoint.",
+          ref_note_minimax: "OpenAI 호환.",
+
+          toast_saved: "브라우저에 저장됨",
+          toast_copied: "{label} 복사됨",
+          toast_copy_failed: "복사 실패: {err}",
+          toast_preset_applied: "프리셋 적용됨: {name}",
+          confirm_reset: "모든 라우트와 alias를 삭제합니다. 진행할까요?",
+          label_toml: "TOML",
+          label_claude_json: "settings.json",
+        },
+      };
+
+      const LANG_KEY = "prism-builder-lang";
+      let lang = localStorage.getItem(LANG_KEY) === "ko" ? "ko" : "en";
+
+      function t(key, params = {}) {
+        const dict = I18N[lang] || I18N.en;
+        let out = dict[key];
+        if (out == null) out = I18N.en[key] != null ? I18N.en[key] : key;
+        for (const [k, v] of Object.entries(params)) {
+          out = out.replaceAll(`{${k}}`, String(v));
+        }
+        return out;
+      }
+
+      function applyStaticI18n() {
+        document.querySelectorAll("[data-i18n]").forEach((el) => {
+          el.textContent = t(el.dataset.i18n);
+        });
+        document.querySelectorAll("[data-i18n-html]").forEach((el) => {
+          el.innerHTML = t(el.dataset.i18nHtml);
+        });
+        document.querySelectorAll("[data-i18n-ph]").forEach((el) => {
+          el.setAttribute("placeholder", t(el.dataset.i18nPh));
+        });
+        document.querySelector("html").setAttribute("lang", lang);
+        document.getElementById("btn-lang").textContent = t("lang_toggle_to");
+        // Subtitle elements that use HTML but also have fallback text content
+        const routesSubtitle = document.querySelector('[data-i18n="routes_subtitle"]');
+        if (routesSubtitle) routesSubtitle.innerHTML = t("routes_subtitle_html");
+        const outputsSubtitle = document.querySelector('[data-i18n="outputs_subtitle"]');
+        if (outputsSubtitle) outputsSubtitle.innerHTML = t("outputs_subtitle_html");
+
+        // Placeholders for inputs with fixed IDs
+        const simInput = document.getElementById("sim-input");
+        if (simInput) simInput.placeholder = t("sim_input_ph");
+        const streamPrompt = document.getElementById("stream-prompt");
+        if (streamPrompt) streamPrompt.placeholder = t("stream_prompt_ph");
+      }
+
+      /* ==========================================================
+       * State
+       * ==========================================================
+       */
+
+      const STORAGE_KEY = "prism-builder-config-v2";
+      const LEGACY_KEY = "prism-builder-config-v1";
+
+      const PROVIDERS = ["auto", "openai", "fireworks", "zai"];
+
+      // Presets come from static/presets.js (loaded via the preceding
+      // <script src="presets.js">). Edit that file alone to manage the
+      // Preset dropdown — no server restart, no fetch, works over http://
+      // and file://. If the file is missing we fall back to an empty array.
+      const PRESETS = Array.isArray(window.PRISM_PRESETS)
+        ? window.PRISM_PRESETS
+        : [];
+
+      const REFERENCES = [
+        { name: "Z.AI (coding)", url: "https://docs.z.ai/", note_key: "ref_note_zai" },
+        { name: "Fireworks", url: "https://docs.fireworks.ai/", note_key: "ref_note_fw" },
+        { name: "OpenAI", url: "https://platform.openai.com/docs/api-reference", note_key: "ref_note_openai" },
+        { name: "Groq", url: "https://console.groq.com/docs", note_key: "ref_note_groq" },
+        { name: "DeepSeek", url: "https://api-docs.deepseek.com/", note_key: "ref_note_deepseek" },
+        { name: "Google Gemini", url: "https://ai.google.dev/gemini-api/docs/openai", note_key: "ref_note_gemini" },
+        { name: "MiniMax", url: "https://www.minimax.io/platform", note_key: "ref_note_minimax" },
+      ];
+
+      const defaultRoute = () => ({
+        prefix: "",
+        provider: "auto",
+        base: "",
+        apiKey: "",
+        keyEnv: "",
+        keyMode: "inline",
+        model: "",
+        anthropicFormat: false,
+        _expanded: true,
+      });
+
+      const defaultState = () => ({
+        port: 8088,
+        routes: [],
+        claudeSelection: { haiku: "", sonnet: "", opus: "" },
+      });
+
+      let state = loadState();
+
+      function loadState() {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            const routes = (parsed.routes || []).map((r) => {
+              // Legacy route state may have encoded the format through
+              // `provider: "anthropic"` before we split the flag out; honour
+              // either encoding so older localStorage data keeps working.
+              const legacyAnthropicProvider = r.provider === "anthropic";
+              const provider = legacyAnthropicProvider ? "auto" : r.provider || "auto";
+              return {
+                prefix: r.prefix || r.id || "", // migrate: old id-only routes keep id as the prefix seed
+                provider,
+                base: r.base || "",
+                apiKey: r.apiKey || "",
+                keyEnv: r.keyEnv || "",
+                keyMode: r.keyMode || (r.keyEnv ? "env" : "inline"),
+                model: r.model || "",
+                anthropicFormat: !!r.anthropicFormat || legacyAnthropicProvider,
+                _expanded: false, // always start collapsed on reload; avoids a wall of open forms
+              };
+            });
+            // v2 briefly stored claudeSelection as a string label; normalise.
+            const sel = parsed.claudeSelection;
+            const claudeSelection =
+              sel && typeof sel === "object"
+                ? { haiku: sel.haiku || "", sonnet: sel.sonnet || "", opus: sel.opus || "" }
+                : { haiku: "", sonnet: "", opus: "" };
+            return {
+              ...defaultState(),
+              port: parsed.port || 8088,
+              claudeSelection,
+              routes,
+            };
+          } catch (_) {}
+        }
+        const legacyRaw = localStorage.getItem(LEGACY_KEY);
+        if (legacyRaw) {
+          try {
+            const legacy = JSON.parse(legacyRaw);
+            const routes = (legacy.routes || []).map((r) => ({
+              prefix: r.prefix || "",
+              provider: r.provider || "auto",
+              base: r.base || "",
+              apiKey: r.apiKey || "",
+              keyEnv: r.keyEnv || "",
+              keyMode: r.keyEnv ? "env" : "inline",
+              model: "",
+            }));
+            return { ...defaultState(), port: legacy.port || 8088, routes };
+          } catch (_) {}
+        }
+        return defaultState();
+      }
+
+      function saveState(toast = true) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        if (toast) showToast(t("toast_saved"));
+      }
+
+      /* ==========================================================
+       * Rendering
+       * ==========================================================
+       */
+
+      const $ = (id) => document.getElementById(id);
+
+      const routesList = $("routes-list");
+      const tomlPreview = $("toml-preview");
+      const claudePreview = $("claude-preview");
+      const portInput = $("port-input");
+      const baseUrlDisplay = $("base-url-display");
+
+      function render() {
+        applyStaticI18n();
+        portInput.value = state.port;
+        baseUrlDisplay.value = baseUrl();
+        $("chip-routes").textContent = state.routes.length;
+        $("chip-base").textContent = baseUrl();
+        const routesCount = $("routes-count");
+        if (routesCount) routesCount.textContent = `${state.routes.length} route${state.routes.length === 1 ? "" : "s"}`;
+        renderRoutes();
+        renderOutputs();
+        renderReference();
+        renderTestingSelectors();
+        runSimulator();
+      }
+
+      function baseUrl() {
+        return `http://127.0.0.1:${state.port}`;
+      }
+
+      function renderRoutes() {
+        if (!state.routes.length) {
+          routesList.innerHTML = `<div class="empty-state">${escape(t("routes_empty"))}</div>`;
+          return;
+        }
+        routesList.innerHTML = state.routes.map((route, idx) => routeCard(route, idx)).join("");
+        state.routes.forEach((_, idx) => bindRoute(idx));
+      }
+
+      function routeCard(route, idx) {
+        const expanded = !!route._expanded;
+        const prefix = route.prefix.trim();
+        const providerOpts = PROVIDERS.map(
+          (p) => `<option value="${p}" ${p === (route.provider || "auto") ? "selected" : ""}>${p}</option>`
+        ).join("");
+        const presetOpts = [
+          `<option value="">${escape(t("route_preset_placeholder"))}</option>`,
+          ...PRESETS.map(
+            (p, i) => `<option value="${i}">${escape(p.name)}</option>`
+          ),
+        ].join("");
+        const keyLabel = route.keyMode === "env" ? t("route_api_key_env") : t("route_api_key");
+        const keyPlaceholder = route.keyMode === "env" ? t("route_ph_env") : t("route_ph_key");
+        const baseShort = shortenBase(route.base);
+        const providerDisplay = route.provider && route.provider !== "auto" ? route.provider : "auto";
+
+        return `
+        <div class="route ${expanded ? "is-open" : ""}" data-idx="${idx}">
+          <div class="route-head" data-action="toggle">
+            <span class="prefix ${prefix ? "" : "empty"}">${prefix ? escape(prefix) : escape(t("route_tag_unconfigured"))}</span>
+            <span class="provider-tag">${escape(providerDisplay)}</span>
+            <span class="meta">
+              <span class="base">${escape(baseShort || "—")}</span>
+              ${route.model && route.model.trim() ? `<span class="arrow">→</span><span class="model">${escape(route.model.trim())}</span>` : ""}
+              ${route.anthropicFormat ? `<span class="flag-badge">anthropic</span>` : ""}
+            </span>
+            <span class="chev">▾</span>
+          </div>
+          ${expanded ? `
+          <div class="route-body">
+            <div class="fields-row">
+              <div class="field">
+                <label>${escape(t("route_prefix"))} <span class="hint">${escape(t("route_prefix_hint"))}</span></label>
+                <input data-field="prefix" class="mono" value="${escape(route.prefix)}" placeholder="${escape(t("route_ph_prefix"))}" />
+              </div>
+              <div class="field">
+                <label>${escape(t("route_provider"))}</label>
+                <select data-field="provider">${providerOpts}</select>
+              </div>
+              <div class="field">
+                <label>${escape(t("route_model"))} <span class="hint">${escape(t("route_model_hint"))}</span></label>
+                <input data-field="model" class="mono" value="${escape(route.model)}" placeholder="${escape(t("route_ph_model"))}" />
+              </div>
+            </div>
+            <div class="field field-full">
+              <label>${escape(t("route_base"))}</label>
+              <input data-field="base" class="mono" value="${escape(route.base)}" placeholder="${escape(t("route_ph_base"))}" />
+            </div>
+            <div class="field field-full">
+              <label>${escape(keyLabel)}</label>
+              <input data-field="key" class="mono" type="${route.keyMode === "env" ? "text" : "password"}" value="${escape(
+                route.keyMode === "env" ? route.keyEnv : route.apiKey
+              )}" placeholder="${escape(keyPlaceholder)}" />
+            </div>
+            <label class="checkbox-row" title="${escape(t("route_anthropic_format_hint"))}">
+              <input type="checkbox" data-field="anthropicFormat" ${route.anthropicFormat ? "checked" : ""} />
+              <span>${escape(t("route_anthropic_format"))}</span>
+              <span class="hint">${escape(t("route_anthropic_format_hint"))}</span>
+            </label>
+            <div class="foot">
+              <div class="key-mode" title="${escape(t("route_key_mode"))}">
+                <button data-key-mode="inline" class="${route.keyMode !== "env" ? "active" : ""}">${escape(t("route_key_inline"))}</button>
+                <button data-key-mode="env" class="${route.keyMode === "env" ? "active" : ""}">${escape(t("route_key_env"))}</button>
+              </div>
+              <span class="spacer"></span>
+              <div class="preset-inline" title="${escape(t("route_preset_hint"))}">
+                <span class="foot-label">${escape(t("route_preset"))}</span>
+                <select data-action="preset">${presetOpts}</select>
+              </div>
+              <button class="danger ghost" data-action="remove">${escape(t("btn_remove"))}</button>
+            </div>
+          </div>
+          ` : ""}
+        </div>`;
+      }
+
+      function shortenBase(url) {
+        if (!url) return "";
+        try {
+          const parsed = new URL(url);
+          const path = parsed.pathname.replace(/\/+$/, "");
+          return (parsed.host + path).replace(/^www\./, "");
+        } catch (_) {
+          return url;
+        }
+      }
+
+      function bindRoute(idx) {
+        const card = routesList.querySelector(`[data-idx="${idx}"]`);
+        const head = card.querySelector('[data-action="toggle"]');
+        if (head) {
+          head.addEventListener("click", (ev) => {
+            // ignore clicks on interactive children (shouldn't fire here anyway)
+            if (ev.target.closest("input, select, button")) return;
+            state.routes[idx]._expanded = !state.routes[idx]._expanded;
+            render();
+          });
+        }
+        card.querySelectorAll("[data-field]").forEach((el) => {
+          const isCheckbox = el.type === "checkbox";
+          const evt = isCheckbox ? "change" : "input";
+          el.addEventListener(evt, () => {
+            const field = el.dataset.field;
+            const route = state.routes[idx];
+            if (isCheckbox) {
+              route[field] = el.checked;
+              // badge in the collapsed summary changes, so full render
+              render();
+              return;
+            }
+            const value = el.value;
+            if (field === "key") {
+              if (route.keyMode === "env") route.keyEnv = value;
+              else route.apiKey = value;
+            } else {
+              route[field] = value;
+            }
+            syncLightTouches();
+          });
+        });
+        card.querySelectorAll("[data-key-mode]").forEach((el) => {
+          el.addEventListener("click", () => {
+            state.routes[idx].keyMode = el.dataset.keyMode;
+            render();
+          });
+        });
+        const presetEl = card.querySelector('[data-action="preset"]');
+        if (presetEl) {
+          presetEl.addEventListener("change", () => {
+            const raw = presetEl.value;
+            presetEl.value = ""; // always one-shot
+            if (raw === "") return;
+            const preset = PRESETS[Number(raw)];
+            if (!preset) return;
+            const route = state.routes[idx];
+            if (preset.base) route.base = preset.base;
+            if (preset.provider) route.provider = preset.provider;
+            if (preset.key_env && !route.keyEnv) route.keyEnv = preset.key_env;
+            // `anthropic_format` is an explicit mode switch — apply when the
+            // preset specifies it (true or false), otherwise leave as-is so a
+            // user toggle survives a preset application.
+            if (typeof preset.anthropic_format === "boolean") {
+              route.anthropicFormat = preset.anthropic_format;
+            }
+            render();
+            showToast(t("toast_preset_applied", { name: preset.name }));
+          });
+        }
+        card.querySelector('[data-action="remove"]').addEventListener("click", () => {
+          state.routes.splice(idx, 1);
+          render();
+        });
+      }
+
+      function renderOutputs() {
+        tomlPreview.textContent = buildToml();
+        renderModelSuggestions();
+        // push state values back into the tier inputs (after full re-render they are empty)
+        const sel = state.claudeSelection || {};
+        if ($("sel-haiku"))  $("sel-haiku").value  = sel.haiku  || "";
+        if ($("sel-sonnet")) $("sel-sonnet").value = sel.sonnet || "";
+        if ($("sel-opus"))   $("sel-opus").value   = sel.opus   || "";
+        renderClaudePreview();
+      }
+
+      // Populate the shared <datalist> that feeds the three tier inputs.
+      // Suggestions come from the configured routes — exact-default prefixes
+      // (directly usable) and namespace hints (prefix/<model>).
+      function renderModelSuggestions() {
+        const dl = $("model-suggestions");
+        if (!dl) return;
+        const values = new Set();
+        for (const route of state.routes) {
+          const prefix = route.prefix.trim();
+          if (!prefix) continue;
+          if (route.model && route.model.trim()) values.add(prefix);
+          values.add(`${prefix}/`);
+        }
+        dl.innerHTML = [...values]
+          .map((v) => `<option value="${escape(v)}"></option>`)
+          .join("");
+      }
+
+      // Claude Code settings.json shape, current canonical form:
+      //   env:
+      //     ANTHROPIC_BASE_URL             → Prism URL
+      //     ANTHROPIC_API_KEY              → placeholder (Prism doesn't verify)
+      //     ANTHROPIC_DEFAULT_HAIKU_MODEL  → tier override (background tasks)
+      //     ANTHROPIC_DEFAULT_SONNET_MODEL → tier override (main coding)
+      //     ANTHROPIC_DEFAULT_OPUS_MODEL   → tier override (heavy lifting)
+      //     ANTHROPIC_SMALL_FAST_MODEL     → mirrors Haiku (tool routing etc.)
+      //   top-level "model"                → initial /model selection (mirrors Sonnet)
+      function renderClaudePreview() {
+        const haiku = ($("sel-haiku")?.value || "").trim();
+        const sonnet = ($("sel-sonnet")?.value || "").trim();
+        const opus = ($("sel-opus")?.value || "").trim();
+
+        // persist so render() / lang toggle / save round-trip the values
+        state.claudeSelection = { haiku, sonnet, opus };
+
+        const env = {
+          ANTHROPIC_BASE_URL: baseUrl(),
+          ANTHROPIC_API_KEY: "dummy",
+        };
+        if (haiku)  env.ANTHROPIC_DEFAULT_HAIKU_MODEL = haiku;
+        if (sonnet) env.ANTHROPIC_DEFAULT_SONNET_MODEL = sonnet;
+        if (opus)   env.ANTHROPIC_DEFAULT_OPUS_MODEL = opus;
+        if (haiku)  env.ANTHROPIC_SMALL_FAST_MODEL = haiku;
+
+        const json = {
+          $schema: "https://json.schemastore.org/claude-code-settings.json",
+          env,
+        };
+        if (sonnet) json.model = sonnet;
+
+        claudePreview.textContent = JSON.stringify(json, null, 2);
+      }
+
+      function renderReference() {
+        $("reference-grid").innerHTML = REFERENCES.map(
+          (r) => `
+            <div class="ref-card">
+              <h4>${escape(r.name)}</h4>
+              <p>${escape(t(r.note_key))}</p>
+              <a href="${r.url}" target="_blank" rel="noopener">${escape(t("ref_docs"))}</a>
+            </div>`
+        ).join("");
+      }
+
+      function renderTestingSelectors() {
+        const opts = state.routes
+          .map((r, idx) => {
+            const label = r.id || r.prefix || `route #${idx + 1}`;
+            return `<option value="${idx}">${escape(label)}</option>`;
+          })
+          .join("");
+        const empty = !state.routes.length ? `<option value="">${escape(t("stream_no_routes"))}</option>` : "";
+        $("test-route").innerHTML = opts || empty;
+        $("stream-route").innerHTML = opts || empty;
+      }
+
+      function syncLightTouches() {
+        $("chip-routes").textContent = state.routes.length;
+        $("chip-base").textContent = baseUrl();
+        const routesCount = $("routes-count");
+        if (routesCount) routesCount.textContent = `${state.routes.length} route${state.routes.length === 1 ? "" : "s"}`;
+        baseUrlDisplay.value = baseUrl();
+        tomlPreview.textContent = buildToml();
+        renderClaudeSelector();
+        renderClaudePreview();
+        renderTestingSelectors();
+        runSimulator();
+      }
+
+      /* ==========================================================
+       * TOML
+       * ==========================================================
+       */
+
+      function buildToml() {
+        const lines = [];
+        lines.push(`port = ${Number(state.port) || 8088}`);
+        for (const route of state.routes) {
+          lines.push("");
+          lines.push("[[routes]]");
+          if (route.prefix.trim()) lines.push(`prefix = ${quote(route.prefix.trim())}`);
+          if (route.provider && route.provider !== "auto")
+            lines.push(`provider = ${quote(route.provider)}`);
+          if (route.base.trim()) lines.push(`base = ${quote(route.base.trim())}`);
+          if (route.keyMode === "env") {
+            if (route.keyEnv.trim()) lines.push(`key_env = ${quote(route.keyEnv.trim())}`);
+          } else {
+            if (route.apiKey.trim()) lines.push(`api_key = ${quote(route.apiKey.trim())}`);
+          }
+          if (route.model && route.model.trim())
+            lines.push(`model = ${quote(route.model.trim())}`);
+          if (route.anthropicFormat) lines.push(`anthropic_format = true`);
+        }
+        return lines.join("\n") + "\n";
+      }
+
+      function quote(s) {
+        return `"${String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+      }
+
+      function escape(s) {
+        return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+        }[c]));
+      }
+
+      /* ==========================================================
+       * Resolver simulator
+       * ==========================================================
+       */
+
+      let simTimer = null;
+      const simInput = $("sim-input");
+      const simBadge = $("sim-badge");
+      const simBody = $("sim-body");
+
+      simInput.addEventListener("input", () => {
+        clearTimeout(simTimer);
+        simTimer = setTimeout(runSimulator, 150);
+      });
+
+      document.querySelectorAll(".sim-example").forEach((el) => {
+        el.addEventListener("click", () => {
+          simInput.value = el.dataset.example;
+          runSimulator();
+        });
+      });
+
+      async function runSimulator() {
+        const model = simInput.value.trim();
+        if (!model) {
+          simBadge.className = "sim-badge idle";
+          simBadge.textContent = t("sim_idle");
+          simBody.innerHTML = row(t("sim_k_input"), t("sim_input_empty"));
+          return;
+        }
+        try {
+          const response = await fetch("/api/resolve-preview", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              model,
+              routes: state.routes
+                .filter((r) => r.prefix.trim())
+                .map((r) => ({
+                  prefix: r.prefix.trim(),
+                  provider: r.provider !== "auto" ? r.provider : null,
+                  base: r.base.trim() || null,
+                  model: r.model && r.model.trim() ? r.model.trim() : null,
+                })),
+            }),
+          });
+          const payload = await response.json();
+          if (payload.ok) {
+            simBadge.className = "sim-badge ok";
+            simBadge.textContent = payload.matched_by;
+            simBody.innerHTML = [
+              row(t("sim_k_input"), model),
+              row(t("sim_k_upstream"), payload.upstream_model),
+              row(t("sim_k_route_prefix"), payload.backend.prefix || t("sim_none")),
+              payload.backend.default_model
+                ? row(t("sim_k_route_model"), payload.backend.default_model)
+                : "",
+              row(t("sim_k_provider"), payload.backend.provider),
+              row(t("sim_k_base"), payload.backend.base),
+              payload.warnings && payload.warnings.length
+                ? row(t("sim_k_warnings"), payload.warnings.join(" · "))
+                : "",
+            ].join("");
+          } else {
+            simBadge.className = "sim-badge bad";
+            simBadge.textContent = payload.reason === "empty_input" ? t("sim_empty") : t("sim_nomatch");
+            simBody.innerHTML = [
+              row(t("sim_k_input"), model),
+              row(t("sim_k_catalog"), payload.catalog || ""),
+              payload.warnings && payload.warnings.length
+                ? row(t("sim_k_warnings"), payload.warnings.join(" · "))
+                : "",
+            ].join("");
+          }
+        } catch (err) {
+          simBadge.className = "sim-badge bad";
+          simBadge.textContent = t("sim_error");
+          simBody.innerHTML = row(t("sim_k_error"), String(err));
+        }
+      }
+
+      function row(k, v) {
+        return `<span class="k">${escape(k)}</span><span class="v">${escape(v)}</span>`;
+      }
+
+      /* ==========================================================
+       * Testing — upstream ping
+       * ==========================================================
+       */
+
+      $("btn-run-test").addEventListener("click", async () => {
+        const idx = Number($("test-route").value);
+        const route = state.routes[idx];
+        const model = $("test-model").value.trim();
+        const statusEl = $("test-status");
+        const bodyEl = $("test-body");
+        if (!route || !model) {
+          statusEl.textContent = t("test_need_inputs");
+          return;
+        }
+        statusEl.textContent = t("test_calling");
+        bodyEl.classList.add("hidden");
+        try {
+          const res = await fetch("/api/test-upstream", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              base: route.base,
+              api_key: route.keyMode === "env" ? "" : route.apiKey,
+              model,
+              provider: route.provider !== "auto" ? route.provider : null,
+            }),
+          });
+          const payload = await res.json();
+          statusEl.textContent = payload.ok
+            ? t("test_ok", { status: payload.status, provider: payload.provider })
+            : t("test_fail", { status: payload.status || "?", error: payload.error || "" });
+          bodyEl.textContent = JSON.stringify(payload, null, 2);
+          bodyEl.classList.remove("hidden");
+        } catch (err) {
+          statusEl.textContent = `error: ${err}`;
+        }
+      });
+
+      /* ==========================================================
+       * Streaming playground
+       * ==========================================================
+       */
+
+      const streamStatus = $("stream-status");
+      const streamSummary = $("stream-summary");
+      const streamLog = $("stream-log");
+
+      $("btn-run-stream").addEventListener("click", runStream);
+
+      async function runStream() {
+        const idx = Number($("stream-route").value);
+        const route = state.routes[idx];
+        const model = $("stream-model").value.trim();
+        const scenario = $("stream-scenario").value;
+        const prompt = $("stream-prompt").value;
+        if (!route || !model) {
+          streamStatus.textContent = t("test_need_inputs");
+          return;
+        }
+        streamStatus.textContent = t("stream_connecting");
+        streamSummary.textContent = "";
+        streamLog.textContent = "";
+        try {
+          const response = await fetch("/api/test-stream", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              base: route.base,
+              api_key: route.keyMode === "env" ? "" : route.apiKey,
+              model,
+              provider: route.provider !== "auto" ? route.provider : null,
+              scenario,
+              prompt,
+            }),
+          });
+          if (!response.ok || !response.body) {
+            const text = await response.text();
+            streamStatus.textContent = t("stream_failed", { status: response.status, body: text.slice(0, 200) });
+            return;
+          }
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          const events = [];
+          streamStatus.textContent = t("stream_streaming");
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const frames = buffer.split("\n\n");
+            buffer = frames.pop() || "";
+            for (const frame of frames) {
+              const parsed = parseSseFrame(frame);
+              if (!parsed) continue;
+              events.push(parsed);
+              streamLog.textContent += `event: ${parsed.event}\n${parsed.raw}\n\n`;
+              streamLog.scrollTop = streamLog.scrollHeight;
+            }
+          }
+          streamStatus.textContent = t("stream_done", { n: events.length });
+          streamSummary.textContent = JSON.stringify(summariseStream(events), null, 2);
+        } catch (err) {
+          streamStatus.textContent = `error: ${err}`;
+        }
+      }
+
+      function parseSseFrame(frame) {
+        const lines = frame.split("\n");
+        let event = "message";
+        const data = [];
+        for (const line of lines) {
+          if (line.startsWith("event:")) event = line.slice(6).trim();
+          else if (line.startsWith("data:")) data.push(line.slice(5).trim());
+        }
+        const raw = data.join("\n");
+        if (!raw) return null;
+        let payload = null;
+        try { payload = JSON.parse(raw); } catch (_) {}
+        return { event, raw, payload };
+      }
+
+      function summariseStream(events) {
+        const counts = {};
+        const issues = [];
+        const opens = new Set();
+        let hadStart = false, hadStop = false;
+        for (const ev of events) {
+          counts[ev.event] = (counts[ev.event] || 0) + 1;
+          if (ev.event === "message_start") hadStart = true;
+          if (ev.event === "message_stop") hadStop = true;
+          if (ev.event === "content_block_start") {
+            const i = ev.payload?.index;
+            if (i != null) {
+              if (opens.has(i)) issues.push(`content_block_start repeated for index ${i}`);
+              opens.add(i);
+            }
+          }
+          if (ev.event === "content_block_stop") {
+            const i = ev.payload?.index;
+            if (i != null) {
+              if (!opens.has(i)) issues.push(`content_block_stop for unopened index ${i}`);
+              opens.delete(i);
+            }
+          }
+        }
+        for (const i of opens) issues.push(`content_block index ${i} never stopped`);
+        if (!hadStart) issues.push("missing message_start");
+        if (!hadStop) issues.push("missing message_stop");
+        return { counts, issues };
+      }
+
+      /* ==========================================================
+       * Toast + top buttons
+       * ==========================================================
+       */
+
+      let toastTimer = null;
+      function showToast(message, kind = "info") {
+        const el = $("toast");
+        el.textContent = message;
+        el.classList.toggle("error", kind === "error");
+        el.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove("show"), 1800);
+      }
+
+      $("btn-save").addEventListener("click", () => saveState(true));
+      $("btn-reset").addEventListener("click", () => {
+        if (!confirm(t("confirm_reset"))) return;
+        state = defaultState();
+        saveState(false);
+        render();
+      });
+      $("btn-add-route").addEventListener("click", () => {
+        state.routes.push(defaultRoute());
+        render();
+      });
+      portInput.addEventListener("input", () => {
+        state.port = Number(portInput.value) || 8088;
+        syncLightTouches();
+      });
+
+      $("btn-copy-toml").addEventListener("click", () => copyText(buildToml(), t("label_toml")));
+      $("btn-copy-toml-2").addEventListener("click", () => copyText(buildToml(), t("label_toml")));
+      $("btn-download-toml").addEventListener("click", () => downloadText(buildToml(), "prism.config.toml"));
+      $("btn-download-toml-2").addEventListener("click", () => downloadText(buildToml(), "prism.config.toml"));
+      $("btn-copy-claude").addEventListener("click", () => copyText(claudePreview.textContent, t("label_claude_json")));
+      $("btn-download-claude").addEventListener("click", () =>
+        downloadText(claudePreview.textContent, "settings.json")
+      );
+      ["sel-haiku", "sel-sonnet", "sel-opus"].forEach((id) => {
+        const el = $(id);
+        if (!el) return;
+        const handler = () => renderClaudePreview();
+        el.addEventListener("input", handler);
+        el.addEventListener("change", handler);
+      });
+
+      $("btn-lang").addEventListener("click", () => {
+        lang = lang === "en" ? "ko" : "en";
+        localStorage.setItem(LANG_KEY, lang);
+        render();
+      });
+
+      async function copyText(text, label) {
+        try {
+          await navigator.clipboard.writeText(text);
+          showToast(t("toast_copied", { label }));
+        } catch (err) {
+          showToast(t("toast_copy_failed", { err }), "error");
+        }
+      }
+
+      function downloadText(text, filename) {
+        const blob = new Blob([text], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      /* ==========================================================
+       * Rail active state
+       * ==========================================================
+       */
+
+      const rail = document.querySelectorAll(".rail a");
+      const sections = [...document.querySelectorAll("section.panel")];
+      const observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              const id = entry.target.id;
+              rail.forEach((a) =>
+                a.classList.toggle("active", a.getAttribute("href") === `#${id}`)
+              );
+            }
+          }
+        },
+        { rootMargin: "-40% 0px -55% 0px" }
+      );
+      sections.forEach((s) => observer.observe(s));
+
+      render();
+    </script>
+  </body>
+</html>
