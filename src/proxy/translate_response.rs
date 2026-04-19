@@ -263,4 +263,3 @@ pub(super) fn map_finish_reason(reason: Option<&str>) -> Value {
         None => Value::Null,
     }
 }
-

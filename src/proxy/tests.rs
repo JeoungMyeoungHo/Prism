@@ -1585,7 +1585,11 @@ fn anthropic_request_writes_only_max_completion_tokens_for_openai() {
 
     let prepared = anthropic_request_to_openai(request, &backend).unwrap();
     assert_eq!(prepared.body.get("max_completion_tokens"), Some(&json!(64)));
-    assert!(!prepared.body.as_object().unwrap().contains_key("max_tokens"));
+    assert!(!prepared
+        .body
+        .as_object()
+        .unwrap()
+        .contains_key("max_tokens"));
 }
 
 #[test]
@@ -1681,7 +1685,10 @@ fn redacted_thinking_surfaces_as_placeholder_reasoning() {
         .pointer("/messages")
         .and_then(Value::as_array)
         .unwrap();
-    let assistant = messages.iter().find(|m| m.get("role") == Some(&json!("assistant"))).unwrap();
+    let assistant = messages
+        .iter()
+        .find(|m| m.get("role") == Some(&json!("assistant")))
+        .unwrap();
     // Z.AI retains `reasoning_content`; placeholder must survive the adapter.
     let reasoning = assistant
         .get("reasoning_content")
