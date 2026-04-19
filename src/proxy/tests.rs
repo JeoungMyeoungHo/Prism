@@ -1,6 +1,7 @@
+use super::passthrough::anthropic_passthrough_url;
 use super::{
-    anthropic_passthrough_url, anthropic_request_to_openai, openai_response_to_anthropic,
-    AnthropicStreamTranslator, ResponsesStreamTranslator,
+    anthropic_request_to_openai, openai_response_to_anthropic, AnthropicStreamTranslator,
+    ResponsesStreamTranslator,
 };
 use crate::{
     provider::ProviderKind,

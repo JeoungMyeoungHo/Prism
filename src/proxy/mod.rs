@@ -30,17 +30,23 @@
 //! translators, error helpers, SSE formatters, stream translators, HTTP
 //! handlers, tests.
 
+mod passthrough;
 mod streaming;
+mod tools;
+mod upstream_error;
+
+use passthrough::forward_anthropic_passthrough;
 
 use crate::{
     router::ModelRouter,
     types::{
         AnthropicBlock, AnthropicMessage, AnthropicMessagesRequest, AnthropicSystemPrompt,
-        AnthropicTool, AnthropicToolChoice, Backend, OpenAiChatCompletionChunk,
-        OpenAiChatCompletionResponse,
+        Backend, OpenAiChatCompletionChunk, OpenAiChatCompletionResponse,
     },
 };
 use streaming::{sse_event, AnthropicStreamTranslator, ResponsesStreamTranslator};
+use tools::{convert_tool_choice, convert_tools, normalize_schema};
+use upstream_error::{extract_error_message, read_upstream_error};
 use async_stream::stream;
 use axum::{
     body::{Body, Bytes},
@@ -62,7 +68,7 @@ use std::{
 };
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::io::StreamReader;
-use tracing::{info, warn};
+use tracing::info;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -259,114 +265,6 @@ pub async fn openai_responses(
     .await
 }
 
-/// Forward the inbound Anthropic Messages request to a route flagged with
-/// `anthropic_format = true`. The only mutation Prism performs is rewriting
-/// the `model` field; everything else — unknown fields, system blocks, tool
-/// definitions, SSE events — is relayed verbatim. Auth sends both the native
-/// Anthropic `x-api-key` header and an `Authorization: Bearer` header so the
-/// same passthrough route can target Anthropic itself or third-party gateways
-/// that only accept bearer auth on their Anthropic-compatible endpoint.
-///
-/// The upstream Messages URL is derived from the configured base:
-/// - bases that already end in `/v1/` use `{base}messages`
-/// - all other bases use `{base}v1/messages`
-///
-/// This matches the two common Anthropic-compatible conventions:
-/// - direct endpoint bases such as `https://api.anthropic.com/v1/`
-/// - SDK-style bases such as `https://api.fireworks.ai/inference/`
-fn anthropic_passthrough_url(base: &url::Url) -> url::Url {
-    let suffix = if base.path().trim_end_matches('/').ends_with("/v1") {
-        "messages"
-    } else {
-        "v1/messages"
-    };
-    // `base` is validated at config load; `suffix` is one of two string
-    // literals selected above. `join` cannot fail.
-    base.join(suffix)
-        .expect("literal relative ref joined against validated base URL")
-}
-
-async fn forward_anthropic_passthrough(
-    client: &reqwest::Client,
-    backend: &Backend,
-    forwarded_headers: &[(HeaderName, HeaderValue)],
-    raw_body: &Bytes,
-    upstream_model: String,
-) -> Result<Response, ApiError> {
-    let mut value: Value = serde_json::from_slice(raw_body).map_err(|error| {
-        ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "invalid_request_error",
-            format!("invalid Anthropic request body: {error}"),
-        )
-    })?;
-    let stream = value
-        .get("stream")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    if let Some(object) = value.as_object_mut() {
-        object.insert("model".into(), Value::String(upstream_model));
-    }
-
-    let upstream_url = anthropic_passthrough_url(&backend.base);
-
-    let bearer = format!("Bearer {}", backend.api_key);
-    let mut request_builder = client
-        .post(upstream_url)
-        .header("x-api-key", &backend.api_key)
-        .header(reqwest::header::AUTHORIZATION, bearer)
-        .header("anthropic-version", "2023-06-01")
-        .json(&value);
-    if stream {
-        request_builder = request_builder.header(reqwest::header::ACCEPT, "text/event-stream");
-    }
-    for (name, value) in forwarded_headers {
-        request_builder = request_builder.header(name, value);
-    }
-
-    let response = request_builder.send().await.map_err(|error| {
-        ApiError::new(
-            StatusCode::BAD_GATEWAY,
-            "upstream_error",
-            format!(
-                "failed to reach upstream backend `{}`: {error}",
-                backend_label(backend)
-            ),
-        )
-    })?;
-
-    if !response.status().is_success() {
-        return Err(read_upstream_error(response).await);
-    }
-
-    if stream {
-        // Anthropic-native SSE passes through as-is; the client already
-        // speaks Anthropic's event shape.
-        let byte_stream = response
-            .bytes_stream()
-            .map_err(|error| io::Error::new(io::ErrorKind::Other, error));
-        let mut out = Response::new(Body::from_stream(byte_stream));
-        out.headers_mut()
-            .insert(CONTENT_TYPE, HeaderValue::from_static("text/event-stream"));
-        out.headers_mut()
-            .insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-        out.headers_mut()
-            .insert(CONNECTION, HeaderValue::from_static("keep-alive"));
-        Ok(out)
-    } else {
-        let bytes = response.bytes().await.map_err(|error| {
-            ApiError::new(
-                StatusCode::BAD_GATEWAY,
-                "upstream_error",
-                format!("failed to read upstream response: {error}"),
-            )
-        })?;
-        let mut out = Response::new(Body::from(bytes));
-        out.headers_mut()
-            .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        Ok(out)
-    }
-}
 
 pub async fn forward_request_to_backend(
     client: &reqwest::Client,
@@ -2021,66 +1919,6 @@ fn compact_json_preview(value: &impl Serialize) -> String {
     }
 }
 
-fn convert_tools(tools: Vec<AnthropicTool>) -> Result<Value, ApiError> {
-    let tools = tools
-        .into_iter()
-        .map(|tool| {
-            Ok(json!({
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": normalize_schema(tool.input_schema)?,
-                }
-            }))
-        })
-        .collect::<Result<Vec<_>, ApiError>>()?;
-
-    Ok(Value::Array(tools))
-}
-
-fn convert_tool_choice(tool_choice: AnthropicToolChoice) -> Result<Value, ApiError> {
-    match tool_choice.kind.as_str() {
-        "auto" => Ok(Value::String("auto".into())),
-        "any" => Ok(Value::String("required".into())),
-        "none" => Ok(Value::String("none".into())),
-        "tool" => Ok(json!({
-            "type": "function",
-            "function": {
-                "name": tool_choice.name.ok_or_else(|| {
-                    ApiError::new(
-                        StatusCode::BAD_REQUEST,
-                        "invalid_request_error",
-                        "tool choice `tool` requires a `name`",
-                    )
-                })?
-            }
-        })),
-        unsupported => Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "invalid_request_error",
-            format!("unsupported tool choice `{unsupported}`"),
-        )),
-    }
-}
-
-fn normalize_schema(schema: Value) -> Result<Value, ApiError> {
-    match schema {
-        Value::Object(mut object) => {
-            object
-                .entry("type")
-                .or_insert_with(|| Value::String("object".into()));
-            Ok(Value::Object(object))
-        }
-        Value::Null => Ok(json!({ "type": "object", "properties": {} })),
-        other => Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "invalid_request_error",
-            format!("tool input_schema must be a JSON object, got {other}"),
-        )),
-    }
-}
-
 fn openai_response_to_anthropic(
     response: OpenAiChatCompletionResponse,
     requested_model: &str,
@@ -2310,42 +2148,6 @@ fn map_finish_reason(reason: Option<&str>) -> Value {
     }
 }
 
-async fn read_upstream_error(response: reqwest::Response) -> ApiError {
-    let status =
-        StatusCode::from_u16(response.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
-    let body = response.text().await.unwrap_or_default();
-
-    // Preserve the full upstream body in logs for debugging — response to the
-    // client is tagged but keeps only the extracted message.
-    warn!(
-        target: "prism::upstream",
-        %status,
-        body = %body,
-        "upstream error"
-    );
-
-    let message = serde_json::from_str::<Value>(&body)
-        .ok()
-        .and_then(|value| value.get("error").cloned())
-        .map(|error| extract_error_message(&error))
-        .unwrap_or_else(|| {
-            if body.is_empty() {
-                format!("request failed with HTTP {status}")
-            } else {
-                body
-            }
-        });
-
-    ApiError::new(status, "upstream_error", format!("[upstream] {message}"))
-}
-
-fn extract_error_message(error: &Value) -> String {
-    error
-        .get("message")
-        .and_then(Value::as_str)
-        .map(ToString::to_string)
-        .unwrap_or_else(|| error.to_string())
-}
 
 fn collect_upstream_headers(headers: &HeaderMap) -> Vec<(HeaderName, HeaderValue)> {
     const PASSTHROUGH_HEADERS: [&str; 3] = [
