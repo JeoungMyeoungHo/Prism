@@ -40,13 +40,10 @@ use passthrough::forward_anthropic_passthrough;
 use crate::{
     router::ModelRouter,
     types::{
-        AnthropicBlock, AnthropicMessage, AnthropicMessagesRequest, AnthropicSystemPrompt,
-        Backend, OpenAiChatCompletionChunk, OpenAiChatCompletionResponse,
+        AnthropicBlock, AnthropicMessage, AnthropicMessagesRequest, AnthropicSystemPrompt, Backend,
+        OpenAiChatCompletionChunk, OpenAiChatCompletionResponse, OpenAiUsage,
     },
 };
-use streaming::{sse_event, AnthropicStreamTranslator, ResponsesStreamTranslator};
-use tools::{convert_tool_choice, convert_tools, normalize_schema};
-use upstream_error::{extract_error_message, read_upstream_error};
 use async_stream::stream;
 use axum::{
     body::{Body, Bytes},
@@ -66,9 +63,12 @@ use std::{
     io,
     time::{SystemTime, UNIX_EPOCH},
 };
+use streaming::{sse_event, AnthropicStreamTranslator, ResponsesStreamTranslator};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::io::StreamReader;
+use tools::{convert_tool_choice, convert_tools, normalize_schema};
 use tracing::info;
+use upstream_error::{extract_error_message, read_upstream_error};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -264,7 +264,6 @@ pub async fn openai_responses(
     )
     .await
 }
-
 
 pub async fn forward_request_to_backend(
     client: &reqwest::Client,
@@ -548,6 +547,11 @@ async fn proxy_responses_non_streaming(
         request_builder = request_builder.header(name, value);
     }
 
+    // Captured before the body is consumed by the upstream request.
+    let client_parallel_tool_calls = upstream_body
+        .get("parallel_tool_calls")
+        .and_then(Value::as_bool);
+
     let response = request_builder.send().await.map_err(|error| {
         ApiError::new(
             StatusCode::BAD_GATEWAY,
@@ -571,7 +575,11 @@ async fn proxy_responses_non_streaming(
         )
     })?;
 
-    let response_object = openai_chat_response_to_responses(openai_response, &requested_model)?;
+    let response_object = openai_chat_response_to_responses(
+        openai_response,
+        &requested_model,
+        client_parallel_tool_calls,
+    )?;
     Ok(Json(response_object).into_response())
 }
 
@@ -766,14 +774,19 @@ fn anthropic_request_to_openai(
         .expect("json! literal always yields Value::Object");
 
     if let Some(max_tokens) = request.max_tokens {
+        // Canonical OpenAI field for modern models; adapters downgrade to
+        // `max_tokens` for upstreams that don't accept the newer form.
         object.insert("max_completion_tokens".into(), json!(max_tokens));
-        object.insert("max_tokens".into(), json!(max_tokens));
     }
 
     if let Some(stream) = request.stream {
         object.insert("stream".into(), json!(stream));
         if stream {
-            object.insert("stream_options".into(), json!({ "include_usage": true }));
+            let stream_options = request
+                .stream_options
+                .clone()
+                .unwrap_or_else(|| json!({ "include_usage": true }));
+            object.insert("stream_options".into(), stream_options);
         }
     }
 
@@ -785,8 +798,26 @@ fn anthropic_request_to_openai(
         object.insert("top_p".into(), json!(top_p));
     }
 
+    if let Some(top_k) = request.top_k {
+        // OpenAI Chat Completions ignores top_k; many OpenAI-compatible
+        // upstreams (Fireworks, Z.AI, vLLM) honor it. Forward verbatim.
+        object.insert("top_k".into(), json!(top_k));
+    }
+
     if let Some(stop_sequences) = request.stop_sequences {
         object.insert("stop".into(), json!(stop_sequences));
+    }
+
+    if let Some(metadata) = request.metadata {
+        object.insert("metadata".into(), metadata);
+    }
+
+    if let Some(service_tier) = request.service_tier {
+        object.insert("service_tier".into(), json!(service_tier));
+    }
+
+    if let Some(user) = request.user {
+        object.insert("user".into(), json!(user));
     }
 
     if let Some(tools) = request.tools {
@@ -797,7 +828,17 @@ fn anthropic_request_to_openai(
         object.insert("tool_choice".into(), convert_tool_choice(tool_choice)?);
     }
 
-    let adapter_notes = backend.provider.adapter().adapt_request(object);
+    // Anthropic extended-thinking config has no OpenAI analog — record a
+    // visible note rather than silently dropping.
+    let mut adapter_notes = Vec::new();
+    if request.thinking.is_some() {
+        adapter_notes.push(
+            "Prism dropped the Anthropic `thinking` parameter: no OpenAI-compatible equivalent."
+                .into(),
+        );
+    }
+
+    adapter_notes.extend(backend.provider.adapter().adapt_request(object));
 
     Ok(PreparedUpstreamRequest {
         body: openai_request,
@@ -852,14 +893,19 @@ fn responses_request_to_openai_chat(
         .expect("json! literal always yields Value::Object");
 
     if let Some(max_output_tokens) = object.get("max_output_tokens").and_then(Value::as_u64) {
+        // Canonical OpenAI field; adapters downgrade to `max_tokens` for
+        // upstreams that don't accept the newer form.
         request_object.insert("max_completion_tokens".into(), json!(max_output_tokens));
-        request_object.insert("max_tokens".into(), json!(max_output_tokens));
     }
 
     if let Some(stream) = object.get("stream").and_then(Value::as_bool) {
         request_object.insert("stream".into(), json!(stream));
         if stream {
-            request_object.insert("stream_options".into(), json!({ "include_usage": true }));
+            let stream_options = object
+                .get("stream_options")
+                .cloned()
+                .unwrap_or_else(|| json!({ "include_usage": true }));
+            request_object.insert("stream_options".into(), stream_options);
         }
     }
 
@@ -1563,7 +1609,11 @@ fn append_anthropic_message(
                             reasoning_parts.push(thinking);
                         }
                     }
-                    "redacted_thinking" => {}
+                    "redacted_thinking" => {
+                        // Signal to downstream that a reasoning block was
+                        // present but redacted — better than a silent drop.
+                        reasoning_parts.push("[redacted thinking]".to_string());
+                    }
                     _ => {
                         if let Some(fallback) = fallback_assistant_block_text(&block) {
                             text_parts.push(fallback);
@@ -1953,6 +2003,18 @@ fn openai_response_to_anthropic(
         }
     }
 
+    let usage = response.usage.as_ref();
+    let mut usage_obj = json!({
+        "input_tokens": usage.map(|u| u.prompt_tokens).unwrap_or_default(),
+        "output_tokens": usage.map(|u| u.completion_tokens).unwrap_or_default(),
+    });
+    if let Some(cache_read) = usage.and_then(OpenAiUsage::cache_read_tokens) {
+        usage_obj["cache_read_input_tokens"] = json!(cache_read);
+    }
+    if let Some(cache_creation) = usage.and_then(|u| u.cache_creation_input_tokens) {
+        usage_obj["cache_creation_input_tokens"] = json!(cache_creation);
+    }
+
     Ok(json!({
         "id": response.id,
         "type": "message",
@@ -1961,16 +2023,14 @@ fn openai_response_to_anthropic(
         "content": content,
         "stop_reason": map_finish_reason(choice.finish_reason.as_deref()),
         "stop_sequence": Value::Null,
-        "usage": {
-            "input_tokens": response.usage.as_ref().map(|usage| usage.prompt_tokens).unwrap_or_default(),
-            "output_tokens": response.usage.as_ref().map(|usage| usage.completion_tokens).unwrap_or_default(),
-        }
+        "usage": usage_obj,
     }))
 }
 
 fn openai_chat_response_to_responses(
     response: OpenAiChatCompletionResponse,
     requested_model: &str,
+    client_parallel_tool_calls: Option<bool>,
 ) -> Result<Value, ApiError> {
     let created_at = current_timestamp_seconds();
     let choice = response.choices.into_iter().next().ok_or_else(|| {
@@ -2022,6 +2082,25 @@ fn openai_chat_response_to_responses(
         _ => "completed",
     };
 
+    // Prefer the client's declared `parallel_tool_calls` setting; fall back
+    // to whether upstream actually emitted more than one function_call.
+    let parallel_tool_calls = client_parallel_tool_calls.unwrap_or_else(|| {
+        output
+            .iter()
+            .filter(|item| item.get("type") == Some(&json!("function_call")))
+            .count()
+            > 1
+    });
+
+    let mut usage_obj = json!({
+        "input_tokens": usage.prompt_tokens,
+        "output_tokens": usage.completion_tokens,
+        "total_tokens": usage.prompt_tokens + usage.completion_tokens,
+    });
+    if let Some(cache_read) = usage.cache_read_tokens() {
+        usage_obj["input_tokens_details"] = json!({ "cached_tokens": cache_read });
+    }
+
     let mut translated = json!({
         "id": response.id,
         "object": "response",
@@ -2030,12 +2109,8 @@ fn openai_chat_response_to_responses(
         "status": status,
         "model": response.model.unwrap_or_else(|| requested_model.to_string()),
         "output": output,
-        "parallel_tool_calls": output.iter().filter(|item| item.get("type") == Some(&json!("function_call"))).count() > 1,
-        "usage": {
-            "input_tokens": usage.prompt_tokens,
-            "output_tokens": usage.completion_tokens,
-            "total_tokens": usage.prompt_tokens + usage.completion_tokens,
-        }
+        "parallel_tool_calls": parallel_tool_calls,
+        "usage": usage_obj,
     });
 
     // `translated` just built via `json!({ ... })` — always Value::Object.
@@ -2148,7 +2223,6 @@ fn map_finish_reason(reason: Option<&str>) -> Value {
     }
 }
 
-
 fn collect_upstream_headers(headers: &HeaderMap) -> Vec<(HeaderName, HeaderValue)> {
     const PASSTHROUGH_HEADERS: [&str; 3] = [
         "anthropic-beta",
@@ -2173,7 +2247,6 @@ fn current_timestamp_seconds() -> u64 {
         .unwrap_or_default()
         .as_secs()
 }
-
 
 #[cfg(test)]
 mod tests;

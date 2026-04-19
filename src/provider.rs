@@ -94,21 +94,22 @@ impl ProviderAdapter {
         match self.kind {
             ProviderKind::Auto | ProviderKind::OpenAiCompatible => {}
             ProviderKind::Fireworks => {
-                if object.contains_key("max_completion_tokens") && object.contains_key("max_tokens")
-                {
-                    object.remove("max_completion_tokens");
+                if let Some(value) = object.remove("max_completion_tokens") {
+                    // Fireworks treats `max_completion_tokens` as an alias for
+                    // `max_tokens`; forward only the older form. Preserve an
+                    // existing `max_tokens` if the caller already set one.
+                    object.entry("max_tokens").or_insert(value);
                     notes.push(
-                        "Fireworks treats `max_completion_tokens` as an alias for `max_tokens`, so Prism only forwarded `max_tokens`."
+                        "Fireworks treats `max_completion_tokens` as an alias for `max_tokens`, so Prism forwarded `max_tokens` only."
                             .into(),
                     );
                 }
             }
             ProviderKind::Zai => {
-                if object.contains_key("max_completion_tokens") {
-                    object.remove("max_completion_tokens");
+                if let Some(value) = object.remove("max_completion_tokens") {
+                    object.entry("max_tokens").or_insert(value);
                     notes.push(
-                        "Z.AI expects `max_tokens`, so Prism removed `max_completion_tokens`."
-                            .into(),
+                        "Z.AI expects `max_tokens`; Prism renamed `max_completion_tokens`.".into(),
                     );
                 }
 
@@ -153,7 +154,7 @@ impl ProviderAdapter {
         };
 
         let supports_reasoning = matches!(self.kind, ProviderKind::Fireworks | ProviderKind::Zai);
-        let mut removed_any = false;
+        let mut removed_any = 0usize;
 
         for message in messages {
             let Some(message_object) = message.as_object_mut() else {
@@ -165,11 +166,19 @@ impl ProviderAdapter {
             }
 
             if message_object.remove("reasoning_content").is_some() {
-                removed_any = true;
+                removed_any += 1;
             }
         }
 
-        if removed_any {
+        if removed_any > 0 {
+            // Also log — adapter_notes only surface in Builder test endpoints,
+            // but this strip can materially affect multi-turn quality.
+            tracing::debug!(
+                target: "prism::adapter",
+                provider = self.kind.as_str(),
+                dropped = removed_any,
+                "stripped `reasoning_content` from prior assistant turns"
+            );
             notes.push(
                 "This provider does not advertise `reasoning_content` in chat history, so Prism dropped Anthropic thinking blocks from prior turns."
                     .into(),

@@ -59,7 +59,7 @@ pub struct Backend {
     pub anthropic_format: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct AnthropicMessagesRequest {
     pub model: String,
     pub messages: Vec<AnthropicMessage>,
@@ -74,11 +74,33 @@ pub struct AnthropicMessagesRequest {
     #[serde(default)]
     pub top_p: Option<f64>,
     #[serde(default)]
+    pub top_k: Option<u32>,
+    #[serde(default)]
     pub stop_sequences: Option<Vec<String>>,
     #[serde(default)]
     pub tools: Option<Vec<AnthropicTool>>,
     #[serde(default)]
     pub tool_choice: Option<AnthropicToolChoice>,
+    /// Anthropic supports an opaque metadata object (primarily `user_id`).
+    /// Forwarded verbatim — OpenAI Chat Completions ignores the field.
+    #[serde(default)]
+    pub metadata: Option<Value>,
+    /// Opaque routing hint. OpenAI accepts `service_tier` on some endpoints.
+    #[serde(default)]
+    pub service_tier: Option<String>,
+    /// End-user identifier. Anthropic puts this in `metadata.user_id`; OpenAI
+    /// has a top-level `user` string. Accept the explicit form when clients
+    /// send one (some Anthropic SDKs do for parity).
+    #[serde(default)]
+    pub user: Option<String>,
+    /// Anthropic extended thinking config (e.g. `{"type":"enabled","budget_tokens":1024}`).
+    /// Captured so we can log its presence; not forwarded to OpenAI upstreams.
+    #[serde(default)]
+    pub thinking: Option<Value>,
+    /// OpenAI-style streaming options. When a client forwards this explicitly,
+    /// honor it instead of our default `{include_usage: true}`.
+    #[serde(default)]
+    pub stream_options: Option<Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -211,6 +233,34 @@ pub struct OpenAiUsage {
     pub prompt_tokens: u32,
     #[serde(default)]
     pub completion_tokens: u32,
+    /// Anthropic-shaped cache fields. OpenAI-compatible upstreams that speak
+    /// Anthropic-lite sometimes surface these directly; captured so we can
+    /// forward them on the response side.
+    #[serde(default)]
+    pub cache_creation_input_tokens: Option<u32>,
+    #[serde(default)]
+    pub cache_read_input_tokens: Option<u32>,
+    /// OpenAI's native shape nests cached counts under `prompt_tokens_details`.
+    #[serde(default)]
+    pub prompt_tokens_details: Option<OpenAiPromptTokensDetails>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct OpenAiPromptTokensDetails {
+    #[serde(default)]
+    pub cached_tokens: Option<u32>,
+}
+
+impl OpenAiUsage {
+    /// Cache-read token count preferring an explicit Anthropic-style field,
+    /// falling back to the OpenAI `prompt_tokens_details.cached_tokens` shape.
+    pub fn cache_read_tokens(&self) -> Option<u32> {
+        self.cache_read_input_tokens.or_else(|| {
+            self.prompt_tokens_details
+                .as_ref()
+                .and_then(|details| details.cached_tokens)
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]

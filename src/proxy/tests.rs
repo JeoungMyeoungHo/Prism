@@ -1,7 +1,7 @@
 use super::passthrough::anthropic_passthrough_url;
 use super::{
-    anthropic_request_to_openai, openai_response_to_anthropic, AnthropicStreamTranslator,
-    ResponsesStreamTranslator,
+    anthropic_request_to_openai, openai_chat_response_to_responses, openai_response_to_anthropic,
+    AnthropicStreamTranslator, ResponsesStreamTranslator,
 };
 use crate::{
     provider::ProviderKind,
@@ -138,6 +138,7 @@ fn request_translation_relaxes_image_and_thinking_blocks() {
         stop_sequences: None,
         tools: None,
         tool_choice: None,
+        ..Default::default()
     };
 
     let prepared = anthropic_request_to_openai(request, &backend).unwrap();
@@ -191,6 +192,7 @@ fn document_block_text_source_is_expanded_inline() {
         stop_sequences: None,
         tools: None,
         tool_choice: None,
+        ..Default::default()
     };
 
     let backend = Backend {
@@ -260,6 +262,7 @@ fn document_block_content_source_preserves_nested_image() {
         stop_sequences: None,
         tools: None,
         tool_choice: None,
+        ..Default::default()
     };
 
     let backend = Backend {
@@ -327,6 +330,7 @@ fn document_block_binary_source_still_falls_back_to_note() {
         stop_sequences: None,
         tools: None,
         tool_choice: None,
+        ..Default::default()
     };
 
     let backend = Backend {
@@ -1481,4 +1485,207 @@ fn responses_stream_finish_without_body_still_completes() {
         .and_then(Value::as_array)
         .unwrap();
     assert!(output.is_empty());
+}
+
+#[test]
+fn anthropic_request_forwards_top_level_anthropic_fields() {
+    let backend = Backend {
+        prefix: "oai".into(),
+        provider: ProviderKind::OpenAiCompatible,
+        base: Url::parse("https://api.openai.com/v1/").unwrap(),
+        api_key: "test".into(),
+        credential_label: "inline".into(),
+        default_model: None,
+        anthropic_format: false,
+    };
+
+    let request = AnthropicMessagesRequest {
+        model: "gpt-5".into(),
+        messages: vec![AnthropicMessage {
+            role: "user".into(),
+            content: AnthropicContent::Text("hi".into()),
+        }],
+        max_tokens: Some(128),
+        top_k: Some(40),
+        metadata: Some(json!({ "user_id": "u_42" })),
+        service_tier: Some("flex".into()),
+        user: Some("external-user".into()),
+        thinking: Some(json!({ "type": "enabled", "budget_tokens": 1024 })),
+        stream_options: None,
+        ..Default::default()
+    };
+
+    let prepared = anthropic_request_to_openai(request, &backend).unwrap();
+    let body = prepared.body.as_object().unwrap();
+
+    assert_eq!(body.get("top_k"), Some(&json!(40)));
+    assert_eq!(body.get("metadata"), Some(&json!({ "user_id": "u_42" })));
+    assert_eq!(body.get("service_tier"), Some(&json!("flex")));
+    assert_eq!(body.get("user"), Some(&json!("external-user")));
+    assert_eq!(body.get("max_completion_tokens"), Some(&json!(128)));
+    // `thinking` has no OpenAI analog — forwarded as a visible adapter note.
+    assert!(!body.contains_key("thinking"));
+    assert!(prepared
+        .adapter_notes
+        .iter()
+        .any(|note| note.contains("thinking")));
+}
+
+#[test]
+fn anthropic_request_respects_client_stream_options() {
+    let backend = Backend {
+        prefix: "oai".into(),
+        provider: ProviderKind::OpenAiCompatible,
+        base: Url::parse("https://api.openai.com/v1/").unwrap(),
+        api_key: "test".into(),
+        credential_label: "inline".into(),
+        default_model: None,
+        anthropic_format: false,
+    };
+
+    let request = AnthropicMessagesRequest {
+        model: "gpt-5".into(),
+        messages: vec![AnthropicMessage {
+            role: "user".into(),
+            content: AnthropicContent::Text("hi".into()),
+        }],
+        stream: Some(true),
+        stream_options: Some(json!({ "include_usage": false })),
+        ..Default::default()
+    };
+
+    let prepared = anthropic_request_to_openai(request, &backend).unwrap();
+    assert_eq!(
+        prepared.body.get("stream_options"),
+        Some(&json!({ "include_usage": false }))
+    );
+}
+
+#[test]
+fn anthropic_request_writes_only_max_completion_tokens_for_openai() {
+    let backend = Backend {
+        prefix: "oai".into(),
+        provider: ProviderKind::OpenAiCompatible,
+        base: Url::parse("https://api.openai.com/v1/").unwrap(),
+        api_key: "test".into(),
+        credential_label: "inline".into(),
+        default_model: None,
+        anthropic_format: false,
+    };
+
+    let request = AnthropicMessagesRequest {
+        model: "gpt-5".into(),
+        messages: vec![AnthropicMessage {
+            role: "user".into(),
+            content: AnthropicContent::Text("hi".into()),
+        }],
+        max_tokens: Some(64),
+        ..Default::default()
+    };
+
+    let prepared = anthropic_request_to_openai(request, &backend).unwrap();
+    assert_eq!(prepared.body.get("max_completion_tokens"), Some(&json!(64)));
+    assert!(!prepared.body.as_object().unwrap().contains_key("max_tokens"));
+}
+
+#[test]
+fn cache_tokens_forwarded_to_anthropic_usage() {
+    let response_json = json!({
+        "id": "resp_1",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "gpt-5",
+        "choices": [
+            {
+                "index": 0,
+                "message": { "role": "assistant", "content": "ok" },
+                "finish_reason": "stop"
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 100,
+            "completion_tokens": 10,
+            "prompt_tokens_details": { "cached_tokens": 40 }
+        }
+    });
+    let response: OpenAiChatCompletionResponse = serde_json::from_value(response_json).unwrap();
+
+    let translated = openai_response_to_anthropic(response, "claude-sonnet-4").unwrap();
+    let usage = translated.pointer("/usage").unwrap();
+    assert_eq!(usage.get("input_tokens"), Some(&json!(100)));
+    assert_eq!(usage.get("output_tokens"), Some(&json!(10)));
+    assert_eq!(usage.get("cache_read_input_tokens"), Some(&json!(40)));
+}
+
+#[test]
+fn responses_translation_preserves_client_parallel_tool_calls() {
+    let response_json = json!({
+        "id": "resp_1",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "gpt-5",
+        "choices": [
+            {
+                "index": 0,
+                "message": { "role": "assistant", "content": "ok" },
+                "finish_reason": "stop"
+            }
+        ],
+        "usage": { "prompt_tokens": 1, "completion_tokens": 1 }
+    });
+    let response: OpenAiChatCompletionResponse =
+        serde_json::from_value(response_json.clone()).unwrap();
+
+    // Client declared false → proxy echoes false even though no parallel
+    // tool calls occurred in the upstream output.
+    let translated = openai_chat_response_to_responses(response, "gpt-5", Some(false)).unwrap();
+    assert_eq!(translated.get("parallel_tool_calls"), Some(&json!(false)));
+
+    // No client hint → compute from output (single message, no function_call).
+    let response: OpenAiChatCompletionResponse = serde_json::from_value(response_json).unwrap();
+    let translated = openai_chat_response_to_responses(response, "gpt-5", None).unwrap();
+    assert_eq!(translated.get("parallel_tool_calls"), Some(&json!(false)));
+}
+
+#[test]
+fn redacted_thinking_surfaces_as_placeholder_reasoning() {
+    let backend = Backend {
+        prefix: "zai".into(),
+        provider: ProviderKind::Zai,
+        base: Url::parse("https://api.z.ai/api/paas/v4/").unwrap(),
+        api_key: "test".into(),
+        credential_label: "inline".into(),
+        default_model: None,
+        anthropic_format: false,
+    };
+
+    let request = AnthropicMessagesRequest {
+        model: "glm-4.5".into(),
+        messages: vec![AnthropicMessage {
+            role: "assistant".into(),
+            content: AnthropicContent::Blocks(vec![
+                AnthropicBlock {
+                    kind: "redacted_thinking".into(),
+                    fields: Map::new(),
+                },
+                AnthropicBlock::text("Visible answer".into()),
+            ]),
+        }],
+        max_tokens: Some(32),
+        ..Default::default()
+    };
+
+    let prepared = anthropic_request_to_openai(request, &backend).unwrap();
+    let messages = prepared
+        .body
+        .pointer("/messages")
+        .and_then(Value::as_array)
+        .unwrap();
+    let assistant = messages.iter().find(|m| m.get("role") == Some(&json!("assistant"))).unwrap();
+    // Z.AI retains `reasoning_content`; placeholder must survive the adapter.
+    let reasoning = assistant
+        .get("reasoning_content")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(reasoning.contains("[redacted thinking]"));
 }

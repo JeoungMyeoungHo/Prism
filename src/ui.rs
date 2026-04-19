@@ -452,8 +452,14 @@ fn build_stream_request(
         stream: Some(true),
         temperature: Some(0.2),
         top_p: None,
+        top_k: None,
         stop_sequences: None,
         tools,
         tool_choice: None,
+        metadata: None,
+        service_tier: None,
+        user: None,
+        thinking: None,
+        stream_options: None,
     })
 }
