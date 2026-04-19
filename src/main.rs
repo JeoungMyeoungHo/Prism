@@ -1,3 +1,15 @@
+//! Prism — Anthropic ↔ OpenAI-compatible LLM gateway.
+//!
+//! Binary entry point. Bootstrap order:
+//! 1. Install `tracing` subscriber (filter via `RUST_LOG`, default `prism=info`).
+//! 2. Load [`Config`](config::Config) from TOML + env (see [`config`]).
+//! 3. Construct [`ModelRouter`](router::ModelRouter) with resolved backends.
+//! 4. Wire axum routes: Builder UI, health, Anthropic Messages, OpenAI Responses.
+//! 5. Bind `0.0.0.0:<port>` and serve.
+//!
+//! Request flow: client → router (prefix match) → [`proxy`] translator →
+//! upstream provider ([`provider`] adapter) → streaming/non-streaming response.
+
 mod config;
 mod provider;
 mod proxy;

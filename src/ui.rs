@@ -1,3 +1,16 @@
+//! Builder UI and diagnostic endpoints.
+//!
+//! Two responsibilities:
+//! - Serve the static Builder (inlined [`BUILDER_HTML`] and presets) at `/`
+//!   and `/builder`. The Builder runs entirely in the browser and writes TOML
+//!   that the user pastes into `prism.toml`.
+//! - Provide `/api/test-upstream`, `/api/test-stream`, `/api/resolve-preview`
+//!   so the Builder can verify a backend's API key and URL without restarting
+//!   the server.
+//!
+//! These endpoints run untranslated probe payloads against the provider
+//! adapter; they do **not** go through the main proxy translators.
+
 use crate::{
     provider::ProviderKind,
     proxy::{forward_request_to_backend, ApiError},
@@ -12,6 +25,7 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashSet;
+use tracing::warn;
 use url::Url;
 
 pub async fn builder() -> Html<&'static str> {
@@ -76,9 +90,10 @@ pub async fn test_upstream(
         "max_tokens": 24
     });
 
+    // `payload` just built via `json!({ ... })` — always Value::Object.
     let object = payload
         .as_object_mut()
-        .expect("upstream test payload should always be an object");
+        .expect("json! literal always yields Value::Object");
     let adapter_notes = backend.provider.adapter().adapt_request(object);
 
     let adapter = backend.provider.adapter();
@@ -104,6 +119,15 @@ pub async fn test_upstream(
         .and_then(|value| value.get("error"))
         .map(extract_message)
         .filter(|message| !message.is_empty());
+
+    if !status.is_success() {
+        warn!(
+            target: "prism::upstream",
+            %status,
+            body = %raw_body,
+            "test-upstream: upstream error"
+        );
+    }
 
     Ok(Json(json!({
         "ok": status.is_success(),
@@ -192,7 +216,8 @@ pub async fn resolve_preview(Json(request): Json<ResolvePreviewRequest>) -> Json
             .unwrap_or("https://example.invalid/");
         let base = match normalize_base_url(base_raw) {
             Ok(url) => url,
-            Err(_) => Url::parse("https://example.invalid/").expect("placeholder URL"),
+            // Literal well-formed URL — parse cannot fail.
+            Err(_) => Url::parse("https://example.invalid/").expect("literal URL parses"),
         };
         let provider = ProviderKind::resolve(route.provider, &base);
         let default_model = route

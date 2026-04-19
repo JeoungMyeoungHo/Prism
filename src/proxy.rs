@@ -1,3 +1,35 @@
+//! Request/response translation and SSE streaming.
+//!
+//! This module is the heart of the proxy. It converts between three protocol
+//! shapes and drives the upstream HTTP call:
+//!
+//! - **Anthropic Messages** (client-facing, `/v1/messages`)
+//! - **OpenAI Chat Completions** (upstream wire format)
+//! - **OpenAI Responses** (client-facing, `/v1/responses`)
+//!
+//! High-level flow (non-streaming):
+//!
+//! ```text
+//! client request → translate_request → upstream POST → translate_response → client
+//! ```
+//!
+//! Streaming flow feeds upstream SSE chunks through a stateful translator
+//! (see [`AnthropicStreamTranslator`], [`ResponsesStreamTranslator`]) that
+//! re-emits SSE events in the client's expected shape.
+//!
+//! Cross-cutting pieces:
+//! - [`AppState`] — shared router + HTTP client, cloned into each handler.
+//! - [`ApiError`] — unified error surface for translation/upstream failures.
+//! - [`read_upstream_error`] — normalizes non-2xx upstream bodies into [`ApiError`].
+//! - [`anthropic_passthrough_url`] / [`forward_anthropic_passthrough`] —
+//!   bypass translation when upstream is itself Anthropic-compatible.
+//!
+//! The file is large; until it is split into submodules, use a symbol search
+//! rather than scrolling. Items are grouped roughly in this order: app state
+//! and error, passthrough, request translators, content/tool helpers, response
+//! translators, error helpers, SSE formatters, stream translators, HTTP
+//! handlers, tests.
+
 use crate::{
     router::ModelRouter,
     types::{
@@ -28,7 +60,7 @@ use std::{
 };
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::io::StreamReader;
-use tracing::info;
+use tracing::{info, warn};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -246,7 +278,10 @@ fn anthropic_passthrough_url(base: &url::Url) -> url::Url {
     } else {
         "v1/messages"
     };
-    base.join(suffix).expect("normalized backend base URL")
+    // `base` is validated at config load; `suffix` is one of two string
+    // literals selected above. `join` cannot fail.
+    base.join(suffix)
+        .expect("literal relative ref joined against validated base URL")
 }
 
 async fn forward_anthropic_passthrough(
@@ -824,9 +859,11 @@ fn anthropic_request_to_openai(
         "messages": messages,
     });
 
+    // `openai_request` was just built with `json!({ ... })`, which always
+    // yields `Value::Object`. The expect here is a non-panicking invariant.
     let object = openai_request
         .as_object_mut()
-        .expect("request root should always be an object");
+        .expect("json! literal always yields Value::Object");
 
     if let Some(max_tokens) = request.max_tokens {
         object.insert("max_completion_tokens".into(), json!(max_tokens));
@@ -909,9 +946,10 @@ fn responses_request_to_openai_chat(
         "messages": messages,
     });
 
+    // `openai_request` just built via `json!({ ... })` — always Value::Object.
     let request_object = openai_request
         .as_object_mut()
-        .expect("request root should always be an object");
+        .expect("json! literal always yields Value::Object");
 
     if let Some(max_output_tokens) = object.get("max_output_tokens").and_then(Value::as_u64) {
         request_object.insert("max_completion_tokens".into(), json!(max_output_tokens));
@@ -2160,9 +2198,10 @@ fn openai_chat_response_to_responses(
         }
     });
 
+    // `translated` just built via `json!({ ... })` — always Value::Object.
     let translated_object = translated
         .as_object_mut()
-        .expect("translated response should be an object");
+        .expect("json! literal always yields Value::Object");
     match choice.finish_reason.as_deref() {
         Some("length") => {
             translated_object.insert(
@@ -2274,19 +2313,28 @@ async fn read_upstream_error(response: reqwest::Response) -> ApiError {
         StatusCode::from_u16(response.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
     let body = response.text().await.unwrap_or_default();
 
+    // Preserve the full upstream body in logs for debugging — response to the
+    // client is tagged but keeps only the extracted message.
+    warn!(
+        target: "prism::upstream",
+        %status,
+        body = %body,
+        "upstream error"
+    );
+
     let message = serde_json::from_str::<Value>(&body)
         .ok()
         .and_then(|value| value.get("error").cloned())
         .map(|error| extract_error_message(&error))
         .unwrap_or_else(|| {
             if body.is_empty() {
-                format!("upstream request failed with HTTP {status}")
+                format!("request failed with HTTP {status}")
             } else {
                 body
             }
         });
 
-    ApiError::new(status, "upstream_error", message)
+    ApiError::new(status, "upstream_error", format!("[upstream] {message}"))
 }
 
 fn extract_error_message(error: &Value) -> String {
@@ -2327,6 +2375,37 @@ struct ToolCallStreamState {
     started: bool,
 }
 
+/// Incrementally converts an OpenAI Chat Completion SSE stream into the
+/// Anthropic Messages SSE shape.
+///
+/// Event sequence emitted to the client:
+///
+/// ```text
+/// message_start
+///   (content_block_start → content_block_delta* → content_block_stop)*
+/// message_delta
+/// message_stop
+/// ```
+///
+/// One text block and zero-or-more tool blocks may interleave. Block indices
+/// are assigned by this translator and are **not** taken from upstream.
+///
+/// Invariants:
+/// - `message_start` is emitted exactly once, on the first chunk carrying a
+///   response id or model (guarded by `emitted_message_start`).
+/// - `text_block_*` track the single text block; it is opened lazily on the
+///   first text delta and closed before `message_delta`.
+/// - `tool_blocks` is indexed by **our** assigned index (see
+///   [`AnthropicStreamTranslator::resolve_tool_index`]); upstream tool indices
+///   are best-effort and may be absent, so we soft-match by id/name or fall
+///   back to a synthetic index.
+/// - `finished` guards against duplicate `message_stop` if `finish()` runs
+///   after a terminal chunk.
+///
+/// Silent `unwrap_or_default()` / `unwrap_or(...)` inside [`push`] handle
+/// legitimately-absent OpenAI delta fields (e.g. missing `content` on a
+/// usage-only chunk) and are part of the normal path — do not promote to
+/// WARN without evidence of real data loss.
 struct AnthropicStreamTranslator {
     requested_model: String,
     response_id: Option<String>,
@@ -2360,6 +2439,11 @@ impl AnthropicStreamTranslator {
         }
     }
 
+    /// Ingest one OpenAI chunk and emit zero or more Anthropic SSE events.
+    /// First chunk with identity fields triggers `message_start`; subsequent
+    /// chunks may open/append text or tool blocks. Terminal chunks (finish
+    /// reason set) are coalesced with the final usage into `message_delta` +
+    /// `message_stop` by [`finish`].
     fn push(&mut self, chunk: OpenAiChatCompletionChunk) -> Vec<Bytes> {
         let mut events = Vec::new();
 
@@ -2572,6 +2656,8 @@ impl AnthropicStreamTranslator {
         events
     }
 
+    /// Lazily open the text block on first text delta and return its index.
+    /// Index is chosen to not collide with existing tool blocks.
     fn ensure_text_block(&mut self, events: &mut Vec<Bytes>) -> usize {
         let index = *self.text_block_index.get_or_insert_with(|| {
             if self.tool_blocks.is_empty() {
@@ -2607,6 +2693,16 @@ impl AnthropicStreamTranslator {
         }
     }
 
+    /// Map an upstream tool delta to our local tool block index.
+    ///
+    /// Resolution order:
+    /// 1. Upstream-provided `index` (authoritative when present).
+    /// 2. Match by tool call id or function name against already-open blocks.
+    /// 3. Reuse the single open tool block when there is exactly one.
+    /// 4. Allocate a synthetic index via [`allocate_synthetic_tool_index`].
+    ///
+    /// This is the only soft-match point in the translator — upstreams that
+    /// omit `index` on tool deltas still produce coherent output.
     fn resolve_tool_index(&mut self, tool_call: &OpenAiToolCallDelta) -> usize {
         if let Some(index) = tool_call.index {
             self.last_tool_index = Some(index);
@@ -2652,10 +2748,13 @@ impl AnthropicStreamTranslator {
             }
         }
 
+        // Only one tool block open → route deltas there. `if let Some`
+        // expresses the invariant locally without an unreachable expect.
         if self.tool_blocks.len() == 1 {
-            let index = *self.tool_blocks.keys().next().expect("single tool key");
-            self.last_tool_index = Some(index);
-            return index;
+            if let Some((&index, _)) = self.tool_blocks.iter().next() {
+                self.last_tool_index = Some(index);
+                return index;
+            }
         }
 
         let index = self.allocate_synthetic_tool_index();
@@ -2667,6 +2766,8 @@ impl AnthropicStreamTranslator {
         self.next_tool_index = self.next_tool_index.max(index.saturating_add(1));
     }
 
+    /// Return the lowest unused index, skipping any already occupied by
+    /// existing tool blocks. Used when upstream gives us no identifying info.
     fn allocate_synthetic_tool_index(&mut self) -> usize {
         while self.tool_blocks.contains_key(&self.next_tool_index) {
             self.next_tool_index += 1;
@@ -2725,6 +2826,33 @@ struct ResponsesClosedOutputItem {
 /// maintains incremental state for `response.output_text.delta`,
 /// `response.function_call_arguments.delta`, and
 /// `response.reasoning_summary_text.delta`.
+///
+/// Event sequence emitted to the client:
+///
+/// ```text
+/// response.created → response.in_progress
+///   (response.output_item.added
+///      → response.(reasoning_summary_text|output_text|function_call_arguments).delta*
+///      → response.output_item.done)*
+/// response.completed  (or response.failed via `fail`)
+/// ```
+///
+/// Each upstream chunk may touch three distinct output item kinds —
+/// reasoning, message (text), and tool call. They are tracked independently
+/// and closed in the order they were opened, with `sequence` incremented on
+/// every emitted event.
+///
+/// Invariants:
+/// - `response.created` + `response.in_progress` fire exactly once, guarded
+///   by `emitted_created`.
+/// - `reasoning_*` / `message_*` ids and output indices are assigned lazily
+///   on the first relevant delta. Opening is idempotent.
+/// - `tools` is indexed by our local index (see [`resolve_tool_index`]);
+///   upstream may omit indices, in which case id/name soft-match is tried.
+/// - `finished` prevents `finish()`/`fail()` from double-emitting terminal
+///   events.
+/// - `next_output_index` is bumped whenever a new output item is opened, so
+///   all emitted `output_index` values are monotonically increasing.
 struct ResponsesStreamTranslator {
     requested_model: String,
     created_at: u64,
@@ -2817,6 +2945,10 @@ impl ResponsesStreamTranslator {
         }
     }
 
+    /// Ingest one OpenAI chunk and emit zero or more Responses SSE events.
+    /// Opens per-kind output items lazily and bumps the shared `sequence`
+    /// counter on every event. Finish reason, usage, and stream termination
+    /// are collected and flushed by [`finish`] / [`fail`].
     fn push(&mut self, chunk: OpenAiChatCompletionChunk) -> Vec<Bytes> {
         let mut events = Vec::new();
 
@@ -2904,6 +3036,9 @@ impl ResponsesStreamTranslator {
         events
     }
 
+    /// Abort the stream with `response.failed`. No-op if already finished.
+    /// Closes any open items in their current state before emitting the
+    /// terminal event.
     fn fail(&mut self, code: &str, message: &str) -> Vec<Bytes> {
         if self.finished {
             return Vec::new();
@@ -2961,6 +3096,7 @@ impl ResponsesStreamTranslator {
         ));
     }
 
+    /// Append `text` to the reasoning output item, opening it on first use.
     fn emit_reasoning_delta(&mut self, text: &str, events: &mut Vec<Bytes>) {
         if self.message_item_id.is_some() {
             self.close_message(events);
@@ -3026,6 +3162,7 @@ impl ResponsesStreamTranslator {
         ));
     }
 
+    /// Append `text` to the message output item, opening it on first use.
     fn emit_text_delta(&mut self, text: &str, events: &mut Vec<Bytes>) {
         // Seal non-message items before opening the message item so
         // `output_index` reflects the order each item started streaming.
@@ -3094,6 +3231,10 @@ impl ResponsesStreamTranslator {
         ));
     }
 
+    /// Fold a tool-call delta into the matching tool state, opening the
+    /// output item on first sight and routing fragments (id/name/arguments)
+    /// into their accumulators. Must run after any pending text/reasoning
+    /// items are closed so output indices stay monotonic.
     fn absorb_tool_call_delta(
         &mut self,
         tool_call: crate::types::OpenAiToolCallDelta,
@@ -3178,6 +3319,8 @@ impl ResponsesStreamTranslator {
         }
     }
 
+    /// Emit `response.output_item.added` for a tool call. Idempotent via
+    /// `state.added`.
     fn open_tool_item(
         state: &mut ResponsesToolStreamState,
         events: &mut Vec<Bytes>,
@@ -3220,6 +3363,8 @@ impl ResponsesStreamTranslator {
         state.added = true;
     }
 
+    /// Emit `part.done` + `output_item.done` for the reasoning item and
+    /// reset the reasoning accumulators so a future delta would reopen.
     fn close_reasoning(&mut self, events: &mut Vec<Bytes>) {
         let Some(item_id) = self.reasoning_item_id.clone() else {
             return;
@@ -3283,6 +3428,8 @@ impl ResponsesStreamTranslator {
         self.reasoning_output_index = None;
     }
 
+    /// Emit `part.done` + `output_item.done` for the message (text) item
+    /// and reset its accumulators.
     fn close_message(&mut self, events: &mut Vec<Bytes>) {
         let Some(item_id) = self.message_item_id.clone() else {
             return;
@@ -3349,6 +3496,7 @@ impl ResponsesStreamTranslator {
         self.message_output_index = None;
     }
 
+    /// Emit `output_item.done` for the tool call and remove its state.
     fn close_tool(&mut self, tool_index: usize, events: &mut Vec<Bytes>) {
         let Some(mut state) = self.tools.remove(&tool_index) else {
             return;
@@ -3395,6 +3543,10 @@ impl ResponsesStreamTranslator {
         });
     }
 
+    /// Map an upstream tool delta to our local tool index. Mirrors
+    /// [`AnthropicStreamTranslator::resolve_tool_index`]: explicit upstream
+    /// index wins, then id/name soft-match, then single-open reuse, then
+    /// synthetic allocation.
     fn resolve_tool_index(&mut self, tool_call: &crate::types::OpenAiToolCallDelta) -> usize {
         if let Some(index) = tool_call.index {
             self.last_tool_index = Some(index);
@@ -3440,10 +3592,13 @@ impl ResponsesStreamTranslator {
             }
         }
 
+        // Only one tool open → route deltas there. `if let Some`
+        // expresses the invariant locally without an unreachable expect.
         if self.tools.len() == 1 {
-            let index = *self.tools.keys().next().expect("single tool key");
-            self.last_tool_index = Some(index);
-            return index;
+            if let Some((&index, _)) = self.tools.iter().next() {
+                self.last_tool_index = Some(index);
+                return index;
+            }
         }
 
         let index = self.allocate_synthetic_tool_index();
@@ -3455,6 +3610,7 @@ impl ResponsesStreamTranslator {
         self.next_tool_index = self.next_tool_index.max(index.saturating_add(1));
     }
 
+    /// Lowest unused index, skipping any already occupied tool slot.
     fn allocate_synthetic_tool_index(&mut self) -> usize {
         while self.tools.contains_key(&self.next_tool_index) {
             self.next_tool_index += 1;
@@ -3504,9 +3660,10 @@ impl ResponsesStreamTranslator {
             }
         });
 
+        // `response` just built via `json!({ ... })` — always Value::Object.
         let response_object = response
             .as_object_mut()
-            .expect("response should be an object");
+            .expect("json! literal always yields Value::Object");
         match self.finish_reason.as_deref() {
             Some("length") => {
                 response_object.insert(

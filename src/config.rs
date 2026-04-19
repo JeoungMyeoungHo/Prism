@@ -1,3 +1,14 @@
+//! Configuration loading and validation.
+//!
+//! Loads TOML from `$PRISM_CONFIG` (or `./prism.toml`), resolves API keys from
+//! inline fields or environment variables, and validates the result:
+//! - every backend must carry a non-empty API key (from `api_key` or `api_key_env`),
+//! - route prefixes must be unique and non-empty,
+//! - port defaults to [`DEFAULT_PORT`] when unspecified.
+//!
+//! Errors surface as [`ConfigError`] with human-readable messages suitable for
+//! printing at startup; anything invalid aborts the process before binding.
+
 use crate::{
     provider::ProviderKind,
     types::{Backend, FileConfig, RouteConfigSource},

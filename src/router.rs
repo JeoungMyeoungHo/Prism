@@ -1,3 +1,18 @@
+//! Model-string → backend routing.
+//!
+//! Each request carries a `model` string; the router resolves it to a
+//! [`Backend`] plus an upstream model name via a three-rule ladder
+//! (longest-prefix wins within each rule):
+//!
+//! 1. [`MatchKind::ExactDefault`] — request model exactly equals a route
+//!    prefix that has a `model` default → upstream receives the default.
+//! 2. [`MatchKind::Namespace`] — request model has shape `prefix/tail` →
+//!    upstream receives `tail`.
+//! 3. [`MatchKind::RawPrefix`] — request model starts with a route prefix →
+//!    upstream receives the original string unchanged.
+//!
+//! No fallthrough: an unmatched request returns an error to the caller.
+
 use crate::types::Backend;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

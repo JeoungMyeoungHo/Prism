@@ -1,3 +1,15 @@
+//! Provider adapters for upstream-specific quirks.
+//!
+//! [`ProviderKind`] names the variants; [`ProviderAdapter`] is the trait that
+//! each variant implements. Adapters decide:
+//! - where to POST chat completions relative to the configured backend base,
+//! - how to attach auth (bearer header vs. provider-specific header),
+//! - request/response body mutations that paper over dialect differences
+//!   (e.g. Fireworks drops `max_completion_tokens`, Z.AI renames tool fields).
+//!
+//! [`ProviderKind::Auto`] sniffs the backend URL host and dispatches to the
+//! best-matching concrete adapter, falling back to OpenAI-compatible.
+
 use crate::types::JsonMap;
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
@@ -63,8 +75,11 @@ pub struct ProviderAdapter {
 
 impl ProviderAdapter {
     pub fn chat_completions_url(self, base: &Url) -> Url {
+        // `base` is validated at config load and always parses as an absolute
+        // URL; "chat/completions" is a literal relative ref, so `join` cannot
+        // fail here.
         base.join("chat/completions")
-            .expect("normalized backend base URL")
+            .expect("literal relative ref joined against validated base URL")
     }
 
     pub fn apply_auth(self, builder: RequestBuilder, api_key: &str) -> RequestBuilder {

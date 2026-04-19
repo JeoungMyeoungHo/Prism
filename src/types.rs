@@ -1,3 +1,13 @@
+//! Shared request/response types and the resolved [`Backend`] value.
+//!
+//! Three type families live here:
+//! - [`FileConfig`] / [`RouteConfigSource`] — deserialized TOML shape.
+//! - [`Backend`] — a fully-resolved route (API key materialized, URL parsed).
+//! - Wire types for both protocols: `Anthropic*` (messages, blocks, tools,
+//!   system prompt) and `OpenAi*` (chat completion request/response, tool
+//!   deltas, usage). These mirror the on-the-wire JSON so `serde` can
+//!   deserialize upstream responses directly.
+
 use crate::provider::ProviderKind;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
