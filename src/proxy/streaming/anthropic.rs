@@ -281,7 +281,7 @@ impl AnthropicStreamTranslator {
             &json!({
                 "type": "message_delta",
                 "delta": {
-                    "stop_reason": super::super::map_finish_reason(self.finish_reason.as_deref()),
+                    "stop_reason": super::super::translate_response::map_finish_reason(self.finish_reason.as_deref()),
                     "stop_sequence": Value::Null,
                 },
                 "usage": {
